@@ -1,32 +1,50 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
-import { useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Dimensions,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
     StyleSheet,
     TextInput,
-    TouchableOpacity
+    TouchableOpacity,
+    View,
 } from 'react-native';
+import Animated, {
+    FadeIn,
+    FadeInDown,
+    FadeInUp,
+    useSharedValue,
+    withSpring
+} from 'react-native-reanimated';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { OnboardingScreen } from '@/components/onboarding-screen';
+import { CapturedPhotos, PhotoCaptureFlow } from '@/components/photo-capture-flow';
+import { WelcomeScreen } from '@/components/welcome-screen';
+import { BORDER_RADIUS, COLORS, FONT_SIZES, FONT_WEIGHTS, SHADOWS, SPACING } from '@/constants/design';
 
-// API Configuration - Update these URLs based on your deployment
+const { width, height: screenHeight } = Dimensions.get('window');
+
+const STORAGE_KEYS = {
+  ONBOARDING_COMPLETE: '@shofit_onboarding_complete',
+};
+
+// API Configuration
 const API_CONFIG = {
-  FASTAPI_URL: 'http://localhost:8000',
-  NODE_SCRAPER_URL: 'http://localhost:3001',
+  FASTAPI_URL: 'http://192.168.1.100:8000', // Update with your IP
+  NODE_SCRAPER_URL: 'http://192.168.1.100:3001',
 };
 
 interface MeasurementResult {
   shoulder_width_cm: number;
+  chest_width_cm: number;
   waist_width_cm: number;
   hip_width_cm: number;
+  upper_body_height_cm: number;
   waist_to_hip_ratio: number;
   height_cm: number;
 }
@@ -35,71 +53,69 @@ interface SizeRecommendation {
   recommended_size: string;
   confidence: string;
   reasoning: string;
+  alternative_size?: string;
 }
 
 interface ProcessingResult {
   measurements: MeasurementResult;
-  sizeChart: any;
   recommendation: SizeRecommendation;
   tryOnImage?: string;
   videoUrl?: string;
 }
 
+type AppScreen = 'welcome' | 'onboarding' | 'capture' | 'main' | 'processing' | 'results';
+
 export default function HomeScreen() {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
-  
-  const [image, setImage] = useState<string | null>(null);
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>('welcome');
+  const [photos, setPhotos] = useState<CapturedPhotos | null>(null);
   const [storeUrl, setStoreUrl] = useState('');
   const [height, setHeight] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<ProcessingResult | null>(null);
 
-  // Request camera permissions and take photo
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera permission is needed to take photos.');
-      return;
-    }
+  useEffect(() => {
+    checkOnboardingStatus();
+  }, []);
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [3, 4],
-      quality: 0.8,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setImage(result.assets[0].uri);
+  const checkOnboardingStatus = async () => {
+    try {
+      const completed = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETE);
+      if (completed === 'true') {
+        // Skip to main after welcome animation
+        setTimeout(() => setCurrentScreen('main'), 3000);
+      }
+    } catch (error) {
+      console.log('Error checking onboarding status:', error);
     }
   };
 
-  // Pick image from gallery
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Gallery permission is needed to select photos.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [3, 4],
-      quality: 0.8,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setImage(result.assets[0].uri);
+  const handleWelcomeComplete = async () => {
+    try {
+      const completed = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETE);
+      if (completed === 'true') {
+        setCurrentScreen('main');
+      } else {
+        setCurrentScreen('onboarding');
+      }
+    } catch (error) {
+      setCurrentScreen('onboarding');
     }
   };
 
-  // Convert image URI to base64
+  const handleOnboardingComplete = async () => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING_COMPLETE, 'true');
+    } catch (error) {
+      console.log('Error saving onboarding status:', error);
+    }
+    setCurrentScreen('main');
+  };
+
+  const handlePhotosCapture = (capturedPhotos: CapturedPhotos) => {
+    setPhotos(capturedPhotos);
+    setCurrentScreen('main');
+  };
+
   const getImageBase64 = async (uri: string): Promise<string> => {
     const response = await fetch(uri);
     const blob = await response.blob();
@@ -108,7 +124,6 @@ export default function HomeScreen() {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = reader.result as string;
-        // Remove data URL prefix if present
         const base64Data = base64.split(',')[1] || base64;
         resolve(base64Data);
       };
@@ -117,94 +132,86 @@ export default function HomeScreen() {
     });
   };
 
-  // Process the image and URL
   const handleProcess = async () => {
-    if (!image) {
-      Alert.alert('Missing Photo', 'Please take or select a full-body photo first.');
+    if (!photos?.frontBody) {
+      Alert.alert('Photos Required', 'Please capture your body photos first.');
       return;
     }
 
     if (!storeUrl.trim()) {
-      Alert.alert('Missing URL', 'Please enter a web store URL for the clothing item.');
+      Alert.alert('URL Required', 'Please enter a clothing store URL.');
       return;
     }
 
     if (!height.trim() || isNaN(Number(height))) {
-      Alert.alert('Missing Height', 'Please enter your height in centimeters.');
+      Alert.alert('Height Required', 'Please enter your height in centimeters.');
       return;
     }
 
+    setCurrentScreen('processing');
     setIsProcessing(true);
-    setResult(null);
 
     try {
-      // Step 1: Get body measurements from FastAPI backend
-      const imageBase64 = await getImageBase64(image);
-      
+      // Get base64 for all photos
+      const frontBodyBase64 = await getImageBase64(photos.frontBody);
+      const sideBodyBase64 = photos.sideBody ? await getImageBase64(photos.sideBody) : null;
+      const faceBase64 = photos.face ? await getImageBase64(photos.face) : null;
+
+      // Step 1: Get body measurements
       const measurementResponse = await fetch(`${API_CONFIG.FASTAPI_URL}/measure`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          image_base64: imageBase64,
+          image_base64: frontBodyBase64,
+          side_image_base64: sideBodyBase64,
           height_cm: Number(height),
         }),
       });
 
       if (!measurementResponse.ok) {
-        throw new Error('Failed to get body measurements');
+        throw new Error('Failed to analyze body measurements');
       }
 
       const measurements: MeasurementResult = await measurementResponse.json();
 
-      // Step 2: Scrape size chart from the store URL
+      // Step 2: Scrape size chart
       const scraperResponse = await fetch(`${API_CONFIG.NODE_SCRAPER_URL}/scrape-size-chart`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: storeUrl.trim(),
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: storeUrl.trim() }),
       });
 
-      if (!scraperResponse.ok) {
-        throw new Error('Failed to scrape size chart');
+      let sizeChart = null;
+      if (scraperResponse.ok) {
+        const scraperData = await scraperResponse.json();
+        sizeChart = scraperData.sizeChart;
       }
 
-      const sizeChartData = await scraperResponse.json();
-
-      // Step 3: Get size recommendation from Gemini
+      // Step 3: Get size recommendation
       const recommendationResponse = await fetch(`${API_CONFIG.NODE_SCRAPER_URL}/recommend-size`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          measurements,
-          sizeChart: sizeChartData.sizeChart,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ measurements, sizeChart }),
       });
 
-      if (!recommendationResponse.ok) {
-        throw new Error('Failed to get size recommendation');
+      let recommendation: SizeRecommendation = {
+        recommended_size: 'M',
+        confidence: 'medium',
+        reasoning: 'Based on your measurements',
+      };
+
+      if (recommendationResponse.ok) {
+        recommendation = await recommendationResponse.json();
       }
 
-      const recommendation: SizeRecommendation = await recommendationResponse.json();
-
-      // Step 4: Virtual try-on (optional - may take longer)
+      // Step 4: Virtual try-on (optional)
       let tryOnImage: string | undefined;
-      let videoUrl: string | undefined;
-
       try {
         const tryOnResponse = await fetch(`${API_CONFIG.FASTAPI_URL}/virtual-tryon`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            person_image_base64: imageBase64,
+            person_image_base64: frontBodyBase64,
             clothing_url: storeUrl.trim(),
           }),
         });
@@ -212,202 +219,373 @@ export default function HomeScreen() {
         if (tryOnResponse.ok) {
           const tryOnData = await tryOnResponse.json();
           tryOnImage = tryOnData.result_image_base64;
-          videoUrl = tryOnData.video_url;
         }
-      } catch (tryOnError) {
-        console.log('Virtual try-on not available:', tryOnError);
+      } catch (e) {
+        console.log('Virtual try-on not available');
       }
 
-      setResult({
-        measurements,
-        sizeChart: sizeChartData.sizeChart,
-        recommendation,
-        tryOnImage,
-        videoUrl,
-      });
+      setResult({ measurements, recommendation, tryOnImage });
+      setCurrentScreen('results');
 
     } catch (error) {
       console.error('Processing error:', error);
       Alert.alert(
-        'Processing Error',
-        error instanceof Error ? error.message : 'An error occurred while processing your request.'
+        'Error',
+        error instanceof Error ? error.message : 'Something went wrong. Please try again.'
       );
+      setCurrentScreen('main');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const resetForm = () => {
-    setImage(null);
+  const resetApp = () => {
+    setPhotos(null);
     setStoreUrl('');
     setHeight('');
     setResult(null);
+    setCurrentScreen('main');
   };
 
+  // Render different screens
+  if (currentScreen === 'welcome') {
+    return <WelcomeScreen onAnimationComplete={handleWelcomeComplete} />;
+  }
+
+  if (currentScreen === 'onboarding') {
+    return <OnboardingScreen onComplete={handleOnboardingComplete} />;
+  }
+
+  if (currentScreen === 'capture') {
+    return (
+      <PhotoCaptureFlow
+        onComplete={handlePhotosCapture}
+        onCancel={() => setCurrentScreen('main')}
+      />
+    );
+  }
+
+  if (currentScreen === 'processing') {
+    return <ProcessingScreen />;
+  }
+
+  if (currentScreen === 'results' && result) {
+    return (
+      <ResultsScreen
+        result={result}
+        photos={photos}
+        onReset={resetApp}
+        onTryAgain={() => setCurrentScreen('main')}
+      />
+    );
+  }
+
+  // Main screen
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <LinearGradient
+        colors={COLORS.gradients.dark as [string, string, string]}
+        style={styles.gradient}
       >
-        <ThemedView style={styles.header}>
-          <ThemedText type="title">👗 ShoFit</ThemedText>
-          <ThemedText style={styles.subtitle}>
-            Find your perfect size with AI
-          </ThemedText>
-        </ThemedView>
-
-        {/* Photo Section */}
-        <ThemedView style={styles.section}>
-          <ThemedText type="subtitle">1. Take a Full-Body Photo</ThemedText>
-          
-          <ThemedView style={styles.photoContainer}>
-            {image ? (
-              <Image source={{ uri: image }} style={styles.previewImage} contentFit="cover" />
-            ) : (
-              <ThemedView style={[styles.placeholderImage, { borderColor: colors.icon }]}>
-                <ThemedText style={styles.placeholderText}>📷</ThemedText>
-                <ThemedText style={styles.placeholderSubtext}>No photo selected</ThemedText>
-              </ThemedView>
-            )}
-          </ThemedView>
-
-          <ThemedView style={styles.buttonRow}>
-            <TouchableOpacity 
-              style={[styles.button, styles.buttonHalf, { backgroundColor: colors.tint }]} 
-              onPress={takePhoto}
-            >
-              <ThemedText style={styles.buttonText}>📸 Camera</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.button, styles.buttonHalf, { backgroundColor: colors.tint }]} 
-              onPress={pickImage}
-            >
-              <ThemedText style={styles.buttonText}>🖼️ Gallery</ThemedText>
-            </TouchableOpacity>
-          </ThemedView>
-        </ThemedView>
-
-        {/* Height Input */}
-        <ThemedView style={styles.section}>
-          <ThemedText type="subtitle">2. Enter Your Height</ThemedText>
-          <TextInput
-            style={[styles.input, { 
-              color: colors.text, 
-              borderColor: colors.icon,
-              backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#f5f5f5'
-            }]}
-            placeholder="Your height in cm (e.g., 175)"
-            placeholderTextColor={colors.icon}
-            value={height}
-            onChangeText={setHeight}
-            keyboardType="numeric"
-          />
-        </ThemedView>
-
-        {/* URL Input */}
-        <ThemedView style={styles.section}>
-          <ThemedText type="subtitle">3. Enter Clothing URL</ThemedText>
-          <TextInput
-            style={[styles.input, { 
-              color: colors.text, 
-              borderColor: colors.icon,
-              backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#f5f5f5'
-            }]}
-            placeholder="https://store.com/product-page"
-            placeholderTextColor={colors.icon}
-            value={storeUrl}
-            onChangeText={setStoreUrl}
-            keyboardType="url"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </ThemedView>
-
-        {/* Process Button */}
-        <TouchableOpacity 
-          style={[
-            styles.button, 
-            styles.processButton, 
-            { backgroundColor: isProcessing ? colors.icon : '#4CAF50' }
-          ]} 
-          onPress={handleProcess}
-          disabled={isProcessing}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          {isProcessing ? (
-            <ThemedView style={styles.loadingContainer}>
-              <ActivityIndicator color="#fff" />
-              <ThemedText style={styles.buttonText}> Processing...</ThemedText>
-            </ThemedView>
-          ) : (
-            <ThemedText style={styles.buttonText}>🚀 Process & Find My Size</ThemedText>
-          )}
-        </TouchableOpacity>
+          {/* Header */}
+          <Animated.View 
+            style={styles.header}
+            entering={FadeInDown.duration(600).delay(200)}
+          >
+            <Animated.Text style={styles.logo}>👗 ShoFit</Animated.Text>
+            <Animated.Text style={styles.tagline}>
+              Find your perfect fit with AI
+            </Animated.Text>
+          </Animated.View>
 
-        {/* Results Section */}
-        {result && (
-          <ThemedView style={styles.resultsSection}>
-            <ThemedText type="title" style={styles.resultsTitle}>📊 Results</ThemedText>
+          {/* Photo Section */}
+          <Animated.View 
+            style={styles.section}
+            entering={FadeInUp.duration(600).delay(400)}
+          >
+            <View style={styles.sectionHeader}>
+              <Animated.Text style={styles.sectionTitle}>📸 Your Photos</Animated.Text>
+              <Animated.Text style={styles.sectionSubtitle}>
+                {photos ? '3 photos captured' : 'Capture 3 angles'}
+              </Animated.Text>
+            </View>
 
-            {/* Size Recommendation */}
-            <ThemedView style={[styles.resultCard, { backgroundColor: '#4CAF50' }]}>
-              <ThemedText style={styles.resultCardTitle}>Recommended Size</ThemedText>
-              <ThemedText style={styles.sizeText}>{result.recommendation.recommended_size}</ThemedText>
-              <ThemedText style={styles.confidenceText}>
-                Confidence: {result.recommendation.confidence}
-              </ThemedText>
-            </ThemedView>
-
-            {/* Measurements */}
-            <ThemedView style={[styles.resultCard, { backgroundColor: colors.tint }]}>
-              <ThemedText style={styles.resultCardTitle}>Your Measurements</ThemedText>
-              <ThemedText style={styles.measurementText}>
-                Shoulder Width: {result.measurements.shoulder_width_cm.toFixed(1)} cm
-              </ThemedText>
-              <ThemedText style={styles.measurementText}>
-                Waist Width: {result.measurements.waist_width_cm.toFixed(1)} cm
-              </ThemedText>
-              <ThemedText style={styles.measurementText}>
-                Hip Width: {result.measurements.hip_width_cm.toFixed(1)} cm
-              </ThemedText>
-              <ThemedText style={styles.measurementText}>
-                Waist-to-Hip Ratio: {result.measurements.waist_to_hip_ratio.toFixed(2)}
-              </ThemedText>
-            </ThemedView>
-
-            {/* Reasoning */}
-            <ThemedView style={[styles.resultCard, { backgroundColor: colorScheme === 'dark' ? '#333' : '#f0f0f0' }]}>
-              <ThemedText style={[styles.resultCardTitle, { color: colors.text }]}>AI Analysis</ThemedText>
-              <ThemedText style={{ color: colors.text }}>{result.recommendation.reasoning}</ThemedText>
-            </ThemedView>
-
-            {/* Virtual Try-On Result */}
-            {result.tryOnImage && (
-              <ThemedView style={styles.tryOnSection}>
-                <ThemedText type="subtitle">Virtual Try-On</ThemedText>
-                <Image 
-                  source={{ uri: `data:image/png;base64,${result.tryOnImage}` }} 
-                  style={styles.tryOnImage} 
-                  contentFit="contain"
-                />
-              </ThemedView>
+            {photos ? (
+              <View style={styles.photosGrid}>
+                {photos.face && (
+                  <View style={styles.photoThumb}>
+                    <Image source={{ uri: photos.face }} style={styles.thumbImage} contentFit="cover" />
+                    <Animated.Text style={styles.thumbLabel}>Face</Animated.Text>
+                  </View>
+                )}
+                {photos.frontBody && (
+                  <View style={styles.photoThumb}>
+                    <Image source={{ uri: photos.frontBody }} style={styles.thumbImage} contentFit="cover" />
+                    <Animated.Text style={styles.thumbLabel}>Front</Animated.Text>
+                  </View>
+                )}
+                {photos.sideBody && (
+                  <View style={styles.photoThumb}>
+                    <Image source={{ uri: photos.sideBody }} style={styles.thumbImage} contentFit="cover" />
+                    <Animated.Text style={styles.thumbLabel}>Side</Animated.Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.captureCard}
+                onPress={() => setCurrentScreen('capture')}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={['rgba(108,99,255,0.2)', 'rgba(108,99,255,0.1)']}
+                  style={styles.captureCardGradient}
+                >
+                  <Animated.Text style={styles.captureIcon}>📷</Animated.Text>
+                  <Animated.Text style={styles.captureText}>
+                    Tap to capture your photos
+                  </Animated.Text>
+                  <Animated.Text style={styles.captureSubtext}>
+                    Face • Front Body • Side Profile
+                  </Animated.Text>
+                </LinearGradient>
+              </TouchableOpacity>
             )}
 
-            {/* Reset Button */}
-            <TouchableOpacity 
-              style={[styles.button, { backgroundColor: '#ff6b6b', marginTop: 16 }]} 
-              onPress={resetForm}
+            {photos && (
+              <TouchableOpacity
+                style={styles.retakeButton}
+                onPress={() => setCurrentScreen('capture')}
+              >
+                <Animated.Text style={styles.retakeText}>📸 Retake Photos</Animated.Text>
+              </TouchableOpacity>
+            )}
+          </Animated.View>
+
+          {/* Height Input */}
+          <Animated.View 
+            style={styles.section}
+            entering={FadeInUp.duration(600).delay(500)}
+          >
+            <View style={styles.sectionHeader}>
+              <Animated.Text style={styles.sectionTitle}>📏 Your Height</Animated.Text>
+            </View>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter height in cm (e.g., 175)"
+                placeholderTextColor={COLORS.gray[500]}
+                value={height}
+                onChangeText={setHeight}
+                keyboardType="numeric"
+              />
+              <Animated.Text style={styles.inputSuffix}>cm</Animated.Text>
+            </View>
+          </Animated.View>
+
+          {/* URL Input */}
+          <Animated.View 
+            style={styles.section}
+            entering={FadeInUp.duration(600).delay(600)}
+          >
+            <View style={styles.sectionHeader}>
+              <Animated.Text style={styles.sectionTitle}>🔗 Clothing URL</Animated.Text>
+            </View>
+            <TextInput
+              style={[styles.input, styles.urlInput]}
+              placeholder="Paste the product page URL"
+              placeholderTextColor={COLORS.gray[500]}
+              value={storeUrl}
+              onChangeText={setStoreUrl}
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </Animated.View>
+
+          {/* Process Button */}
+          <Animated.View entering={FadeInUp.duration(600).delay(700)}>
+            <TouchableOpacity
+              onPress={handleProcess}
+              disabled={isProcessing}
+              activeOpacity={0.8}
             >
-              <ThemedText style={styles.buttonText}>🔄 Start Over</ThemedText>
+              <LinearGradient
+                colors={COLORS.gradients.primary as [string, string, string]}
+                style={styles.processButton}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Animated.Text style={styles.processButtonText}>
+                  ✨ Find My Perfect Size
+                </Animated.Text>
+              </LinearGradient>
             </TouchableOpacity>
-          </ThemedView>
-        )}
-      </ScrollView>
+          </Animated.View>
+        </ScrollView>
+      </LinearGradient>
     </KeyboardAvoidingView>
+  );
+}
+
+// Processing Screen Component
+function ProcessingScreen() {
+  const rotation = useSharedValue(0);
+
+  useEffect(() => {
+    rotation.value = withSpring(360, { damping: 2, stiffness: 50 });
+  }, []);
+
+  return (
+    <View style={styles.container}>
+      <LinearGradient
+        colors={COLORS.gradients.dark as [string, string, string]}
+        style={[styles.gradient, styles.centerContent]}
+      >
+        <Animated.View entering={FadeIn.duration(600)}>
+          <View style={styles.processingIcon}>
+            <Animated.Text style={styles.processingEmoji}>🔮</Animated.Text>
+          </View>
+          <Animated.Text style={styles.processingTitle}>Analyzing...</Animated.Text>
+          <Animated.Text style={styles.processingSubtitle}>
+            Our AI is measuring your body and finding the perfect size
+          </Animated.Text>
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 24 }} />
+        </Animated.View>
+      </LinearGradient>
+    </View>
+  );
+}
+
+// Results Screen Component
+interface ResultsScreenProps {
+  result: ProcessingResult;
+  photos: CapturedPhotos | null;
+  onReset: () => void;
+  onTryAgain: () => void;
+}
+
+function ResultsScreen({ result, photos, onReset, onTryAgain }: ResultsScreenProps) {
+  return (
+    <View style={styles.container}>
+      <LinearGradient
+        colors={COLORS.gradients.dark as [string, string, string]}
+        style={styles.gradient}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Success Header */}
+          <Animated.View 
+            style={styles.resultsHeader}
+            entering={FadeInDown.duration(600)}
+          >
+            <Animated.Text style={styles.successEmoji}>🎉</Animated.Text>
+            <Animated.Text style={styles.resultsTitle}>Your Perfect Fit!</Animated.Text>
+          </Animated.View>
+
+          {/* Size Recommendation Card */}
+          <Animated.View entering={FadeInUp.duration(600).delay(200)}>
+            <LinearGradient
+              colors={['#4CAF50', '#45a049']}
+              style={styles.sizeCard}
+            >
+              <Animated.Text style={styles.sizeLabel}>Recommended Size</Animated.Text>
+              <Animated.Text style={styles.sizeValue}>
+                {result.recommendation.recommended_size}
+              </Animated.Text>
+              <View style={styles.confidenceBadge}>
+                <Animated.Text style={styles.confidenceText}>
+                  {result.recommendation.confidence.toUpperCase()} CONFIDENCE
+                </Animated.Text>
+              </View>
+              {result.recommendation.alternative_size && (
+                <Animated.Text style={styles.alternativeText}>
+                  Alternative: {result.recommendation.alternative_size}
+                </Animated.Text>
+              )}
+            </LinearGradient>
+          </Animated.View>
+
+          {/* Measurements Card */}
+          <Animated.View 
+            style={styles.measurementsCard}
+            entering={FadeInUp.duration(600).delay(400)}
+          >
+            <Animated.Text style={styles.cardTitle}>📏 Your Measurements</Animated.Text>
+            <View style={styles.measurementsGrid}>
+              <MeasurementItem label="Shoulder" value={`${result.measurements.shoulder_width_cm?.toFixed(1) || '--'} cm`} />
+              <MeasurementItem label="Chest" value={`${result.measurements.chest_width_cm?.toFixed(1) || '--'} cm`} />
+              <MeasurementItem label="Waist" value={`${result.measurements.waist_width_cm?.toFixed(1) || '--'} cm`} />
+              <MeasurementItem label="Hip" value={`${result.measurements.hip_width_cm?.toFixed(1) || '--'} cm`} />
+              <MeasurementItem label="Upper Body" value={`${result.measurements.upper_body_height_cm?.toFixed(1) || '--'} cm`} />
+              <MeasurementItem label="W/H Ratio" value={result.measurements.waist_to_hip_ratio?.toFixed(2) || '--'} />
+            </View>
+          </Animated.View>
+
+          {/* AI Reasoning */}
+          <Animated.View 
+            style={styles.reasoningCard}
+            entering={FadeInUp.duration(600).delay(500)}
+          >
+            <Animated.Text style={styles.cardTitle}>🤖 AI Analysis</Animated.Text>
+            <Animated.Text style={styles.reasoningText}>
+              {result.recommendation.reasoning}
+            </Animated.Text>
+          </Animated.View>
+
+          {/* Virtual Try-On */}
+          {result.tryOnImage && (
+            <Animated.View 
+              style={styles.tryOnCard}
+              entering={FadeInUp.duration(600).delay(600)}
+            >
+              <Animated.Text style={styles.cardTitle}>👔 Virtual Try-On</Animated.Text>
+              <Image
+                source={{ uri: `data:image/png;base64,${result.tryOnImage}` }}
+                style={styles.tryOnImage}
+                contentFit="contain"
+              />
+            </Animated.View>
+          )}
+
+          {/* Action Buttons */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity style={styles.secondaryButton} onPress={onTryAgain}>
+              <Animated.Text style={styles.secondaryButtonText}>Try Another</Animated.Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onReset}>
+              <LinearGradient
+                colors={COLORS.gradients.primary as [string, string, string]}
+                style={styles.primaryButton}
+              >
+                <Animated.Text style={styles.primaryButtonText}>Start Over</Animated.Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </LinearGradient>
+    </View>
+  );
+}
+
+// Measurement Item Component
+function MeasurementItem({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.measurementItem}>
+      <Animated.Text style={styles.measurementLabel}>{label}</Animated.Text>
+      <Animated.Text style={styles.measurementValue}>{value}</Animated.Text>
+    </View>
   );
 }
 
@@ -415,129 +593,300 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  gradient: {
+    flex: 1,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    padding: SPACING.lg,
     paddingTop: 60,
     paddingBottom: 40,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: SPACING.xxl,
   },
-  subtitle: {
-    opacity: 0.7,
-    marginTop: 4,
+  logo: {
+    fontSize: FONT_SIZES.display,
+    fontWeight: FONT_WEIGHTS.extrabold,
+    color: COLORS.white,
+  },
+  tagline: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray[400],
+    marginTop: SPACING.xs,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: SPACING.xl,
   },
-  photoContainer: {
-    alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 12,
-  },
-  previewImage: {
-    width: 200,
-    height: 267,
-    borderRadius: 12,
-  },
-  placeholderImage: {
-    width: 200,
-    height: 267,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeholderText: {
-    fontSize: 48,
-  },
-  placeholderSubtext: {
-    marginTop: 8,
-    opacity: 0.6,
-  },
-  buttonRow: {
+  sectionHeader: {
     flexDirection: 'row',
-    gap: 12,
-  },
-  button: {
-    padding: 16,
-    borderRadius: 12,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: SPACING.md,
   },
-  buttonHalf: {
-    flex: 1,
+  sectionTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.white,
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 16,
+  sectionSubtitle: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+  },
+  captureCard: {
+    borderRadius: BORDER_RADIUS.xl,
+    overflow: 'hidden',
+  },
+  captureCardGradient: {
+    padding: SPACING.xxl,
+    alignItems: 'center',
+    borderRadius: BORDER_RADIUS.xl,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    borderStyle: 'dashed',
+  },
+  captureIcon: {
+    fontSize: 64,
+    marginBottom: SPACING.md,
+  },
+  captureText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.white,
+    marginBottom: SPACING.xs,
+  },
+  captureSubtext: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray[400],
+  },
+  photosGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    gap: SPACING.md,
+  },
+  photoThumb: {
+    alignItems: 'center',
+  },
+  thumbImage: {
+    width: 90,
+    height: 120,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.xs,
+  },
+  thumbLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray[400],
+  },
+  retakeButton: {
+    marginTop: SPACING.md,
+    alignItems: 'center',
+  },
+  retakeText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   input: {
+    flex: 1,
+    backgroundColor: COLORS.gray[900],
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.white,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    marginTop: 8,
+    borderColor: COLORS.gray[800],
+  },
+  inputSuffix: {
+    position: 'absolute',
+    right: SPACING.lg,
+    color: COLORS.gray[500],
+    fontSize: FONT_SIZES.md,
+  },
+  urlInput: {
+    paddingRight: SPACING.lg,
   },
   processButton: {
-    marginTop: 8,
-    marginBottom: 24,
-  },
-  loadingContainer: {
-    flexDirection: 'row',
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
     alignItems: 'center',
-    backgroundColor: 'transparent',
+    marginTop: SPACING.md,
+    ...SHADOWS.glow,
   },
-  resultsSection: {
-    marginTop: 16,
+  processButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  // Processing Screen
+  processingIcon: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(108,99,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+    alignSelf: 'center',
+  },
+  processingEmoji: {
+    fontSize: 56,
+  },
+  processingTitle: {
+    fontSize: FONT_SIZES.xxxl,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.white,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
+  },
+  processingSubtitle: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray[400],
+    textAlign: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  // Results Screen
+  resultsHeader: {
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
+  },
+  successEmoji: {
+    fontSize: 64,
+    marginBottom: SPACING.md,
   },
   resultsTitle: {
-    textAlign: 'center',
-    marginBottom: 16,
+    fontSize: FONT_SIZES.xxxl,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.white,
   },
-  resultCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+  sizeCard: {
+    padding: SPACING.xl,
+    borderRadius: BORDER_RADIUS.xl,
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+    ...SHADOWS.lg,
   },
-  resultCardTitle: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
-    marginBottom: 8,
+  sizeLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: 'rgba(255,255,255,0.8)',
     textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: SPACING.xs,
   },
-  sizeText: {
-    color: '#fff',
-    fontSize: 48,
-    fontWeight: 'bold',
-    textAlign: 'center',
+  sizeValue: {
+    fontSize: 72,
+    fontWeight: FONT_WEIGHTS.extrabold,
+    color: COLORS.white,
+  },
+  confidenceBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.full,
+    marginTop: SPACING.sm,
   },
   confidenceText: {
-    color: '#fff',
-    textAlign: 'center',
-    marginTop: 4,
-    opacity: 0.9,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.white,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
-  measurementText: {
-    color: '#fff',
-    fontSize: 16,
+  alternativeText: {
+    fontSize: FONT_SIZES.sm,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: SPACING.sm,
+  },
+  measurementsCard: {
+    backgroundColor: COLORS.gray[900],
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    marginBottom: SPACING.lg,
+  },
+  cardTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.white,
+    marginBottom: SPACING.md,
+  },
+  measurementsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  measurementItem: {
+    width: '48%',
+    backgroundColor: COLORS.gray[800],
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  measurementLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray[400],
     marginBottom: 4,
   },
-  tryOnSection: {
-    marginTop: 16,
-    alignItems: 'center',
+  measurementValue: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: COLORS.white,
+  },
+  reasoningCard: {
+    backgroundColor: COLORS.gray[900],
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    marginBottom: SPACING.lg,
+  },
+  reasoningText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray[300],
+    lineHeight: 24,
+  },
+  tryOnCard: {
+    backgroundColor: COLORS.gray[900],
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    marginBottom: SPACING.lg,
   },
   tryOnImage: {
     width: '100%',
     height: 400,
-    borderRadius: 12,
-    marginTop: 12,
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.lg,
+  },
+  secondaryButton: {
+    flex: 1,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    borderWidth: 2,
+    borderColor: COLORS.gray[700],
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: COLORS.gray[300],
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  primaryButton: {
+    flex: 1,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 });

@@ -64,20 +64,25 @@ app.add_middleware(
 
 class MeasurementRequest(BaseModel):
     """Request model for body measurement."""
-    image_base64: str = Field(..., description="Base64 encoded full-body image")
+    image_base64: str = Field(..., description="Base64 encoded full-body front image")
+    side_image_base64: Optional[str] = Field(None, description="Base64 encoded side view image")
     height_cm: float = Field(..., gt=0, description="User's height in centimeters")
 
 
 class MeasurementResponse(BaseModel):
     """Response model for body measurements."""
     shoulder_width_cm: float
+    chest_width_cm: float
     waist_width_cm: float
     hip_width_cm: float
+    upper_body_height_cm: float
     waist_to_hip_ratio: float
     height_cm: float
     shoulder_width_px: Optional[float] = None
+    chest_width_px: Optional[float] = None
     waist_width_px: Optional[float] = None
     hip_width_px: Optional[float] = None
+    upper_body_height_px: Optional[float] = None
     body_height_px: Optional[float] = None
 
 
@@ -170,14 +175,18 @@ def extract_body_measurements_px(image: np.ndarray) -> dict:
         image_shape = image.shape
         
         # MediaPipe Pose Landmarks:
-        # 11 = LEFT_SHOULDER, 12 = RIGHT_SHOULDER
+        # 0 = NOSE, 11 = LEFT_SHOULDER, 12 = RIGHT_SHOULDER
+        # 13 = LEFT_ELBOW, 14 = RIGHT_ELBOW
         # 23 = LEFT_HIP, 24 = RIGHT_HIP
         # 27 = LEFT_ANKLE, 28 = RIGHT_ANKLE
-        # 0 = NOSE (approximation for head top)
         
         # Get shoulder points
         left_shoulder = get_landmark_coordinates(landmarks, 11, image_shape)
         right_shoulder = get_landmark_coordinates(landmarks, 12, image_shape)
+        
+        # Get elbow points (for chest width approximation)
+        left_elbow = get_landmark_coordinates(landmarks, 13, image_shape)
+        right_elbow = get_landmark_coordinates(landmarks, 14, image_shape)
         
         # Get hip points
         left_hip = get_landmark_coordinates(landmarks, 23, image_shape)
@@ -194,9 +203,18 @@ def extract_body_measurements_px(image: np.ndarray) -> dict:
         shoulder_width_px = calculate_distance(left_shoulder, right_shoulder)
         hip_width_px = calculate_distance(left_hip, right_hip)
         
-        # Waist is estimated as ~80% of hip width for approximation
-        # In a more advanced version, you could use pose estimation refinement
+        # Chest width: estimate from shoulder and elbow positions
+        # Chest is typically ~90-95% of shoulder width
+        chest_width_px = shoulder_width_px * 0.92
+        
+        # Waist width: estimated from hip and shoulder proportions
+        # Waist is typically narrower than hips
         waist_width_px = hip_width_px * 0.85
+        
+        # Upper body height: from shoulder to hip (torso length)
+        avg_shoulder_y = (left_shoulder[1] + right_shoulder[1]) / 2
+        avg_hip_y = (left_hip[1] + right_hip[1]) / 2
+        upper_body_height_px = abs(avg_hip_y - avg_shoulder_y)
         
         # Body height: from nose to average of ankles
         avg_ankle_y = (left_ankle[1] + right_ankle[1]) / 2
@@ -207,8 +225,10 @@ def extract_body_measurements_px(image: np.ndarray) -> dict:
         
         return {
             "shoulder_width_px": shoulder_width_px,
+            "chest_width_px": chest_width_px,
             "waist_width_px": waist_width_px,
             "hip_width_px": hip_width_px,
+            "upper_body_height_px": upper_body_height_px,
             "body_height_px": abs(body_height_px),
         }
 
@@ -234,16 +254,20 @@ def convert_pixels_to_cm(measurements_px: dict, user_height_cm: float) -> dict:
     cm_per_pixel = user_height_cm / measurements_px["body_height_px"]
     
     shoulder_width_cm = measurements_px["shoulder_width_px"] * cm_per_pixel
+    chest_width_cm = measurements_px["chest_width_px"] * cm_per_pixel
     waist_width_cm = measurements_px["waist_width_px"] * cm_per_pixel
     hip_width_cm = measurements_px["hip_width_px"] * cm_per_pixel
+    upper_body_height_cm = measurements_px["upper_body_height_px"] * cm_per_pixel
     
     # Calculate waist-to-hip ratio
     waist_to_hip_ratio = waist_width_cm / hip_width_cm if hip_width_cm > 0 else 0
     
     return {
         "shoulder_width_cm": round(shoulder_width_cm, 2),
+        "chest_width_cm": round(chest_width_cm, 2),
         "waist_width_cm": round(waist_width_cm, 2),
         "hip_width_cm": round(hip_width_cm, 2),
+        "upper_body_height_cm": round(upper_body_height_cm, 2),
         "waist_to_hip_ratio": round(waist_to_hip_ratio, 3),
         "height_cm": user_height_cm,
     }
