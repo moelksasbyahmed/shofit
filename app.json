@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "ShoFit needs camera access to take full-body photos for body measurement analysis.",
+        "NSPhotoLibraryUsageDescription": "ShoFit needs photo library access to select full-body photos for body measurement analysis."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +23,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "output": "static",
@@ -27,6 +36,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ShoFit needs access to your photos to select full-body images for body measurement analysis.",
+          "cameraPermission": "ShoFit needs camera access to take full-body photos for body measurement analysis."
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -43,6 +59,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4437514e-bbab-4d8b-b61d-98993196be00"
+      }
+    },
+    "owner": "mohamedelkasabyahmed"
   }
 }
