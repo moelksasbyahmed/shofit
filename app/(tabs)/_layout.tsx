@@ -1,10 +1,10 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
-import { Text } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
+import React from "react";
 
-import { HapticTab } from '@/components/haptic-tab';
-import { COLORS } from '@/constants/design';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { HapticTab } from "@/components/haptic-tab";
+import { COLORS } from "@/constants/design";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -17,28 +17,44 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: {
-          backgroundColor: colorScheme === 'dark' ? COLORS.gray[900] : COLORS.white,
-          borderTopColor: colorScheme === 'dark' ? COLORS.gray[800] : COLORS.gray[200],
+          backgroundColor:
+            colorScheme === "dark" ? COLORS.gray[900] : COLORS.white,
+          borderTopColor:
+            colorScheme === "dark" ? COLORS.gray[800] : COLORS.gray[200],
           paddingTop: 8,
           height: 88,
         },
         tabBarLabelStyle: {
           fontSize: 12,
-          fontWeight: '600',
+          fontWeight: "600",
         },
-      }}>
+      }}
+    >
       <Tabs.Screen
-        name="index"
+        name="shop"
         options={{
-          title: 'Fit Me',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>👗</Text>,
+          title: "Shop",
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="storefront" size={24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="measurements"
         options={{
-          title: 'History',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>📋</Text>,
+          title: "Measurements",
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="body" size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: "AI Fit",
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="camera" size={24} color={color} />
+          ),
         }}
       />
     </Tabs>
