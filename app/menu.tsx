@@ -4,16 +4,18 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
+    Alert,
     ScrollView,
     StyleSheet,
     TouchableOpacity,
-    View
+    View,
 } from "react-native";
 import Animated, { FadeInLeft } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { BORDER_RADIUS, COLORS, FONT_SIZES, SPACING } from "@/constants/design";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface MenuItem {
   id: string;
@@ -91,6 +93,21 @@ const MENU_SECTIONS = {
 
 export default function MenuScreen() {
   const router = useRouter();
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    Alert.alert("Logout", "Are you sure you want to logout?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: async () => {
+          await logout();
+          router.replace("/login" as any);
+        },
+      },
+    ]);
+  };
 
   const renderMenuItem = (item: MenuItem, index: number) => (
     <Animated.View key={item.id} entering={FadeInLeft.delay(index * 50)}>
@@ -147,9 +164,11 @@ export default function MenuScreen() {
             style={styles.avatar}
             contentFit="cover"
           />
-          <ThemedText style={styles.profileName}>John Doe</ThemedText>
+          <ThemedText style={styles.profileName}>
+            {user?.name || "Guest"}
+          </ThemedText>
           <ThemedText style={styles.profileEmail}>
-            john.doe@example.com
+            {user?.email || "guest@shofit.com"}
           </ThemedText>
           <TouchableOpacity style={styles.profileButton}>
             <ThemedText style={styles.profileButtonText}>
@@ -184,7 +203,7 @@ export default function MenuScreen() {
         </View>
 
         {/* Logout */}
-        <TouchableOpacity style={styles.logoutButton}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={24} color={COLORS.error} />
           <ThemedText style={styles.logoutText}>Logout</ThemedText>
         </TouchableOpacity>

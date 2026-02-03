@@ -1,6 +1,6 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
-import { Text } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { COLORS } from "@/constants/design";
@@ -34,21 +34,27 @@ export default function TabLayout() {
         name="shop"
         options={{
           title: "Shop",
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>🛍️</Text>,
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="storefront" size={24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="measurements"
         options={{
           title: "Measurements",
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>📏</Text>,
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="body" size={24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="index"
         options={{
           title: "AI Fit",
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>👗</Text>,
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="camera" size={24} color={color} />
+          ),
         }}
       />
     </Tabs>

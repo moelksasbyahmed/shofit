@@ -53,7 +53,7 @@ export default function MeasurementsScreen() {
     setHasChanges(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (
       !localMeasurements.shoulders ||
       !localMeasurements.bust ||
@@ -67,7 +67,7 @@ export default function MeasurementsScreen() {
       return;
     }
 
-    updateMeasurements(localMeasurements);
+    await updateMeasurements(localMeasurements);
     setHasChanges(false);
     Alert.alert("Success", "Your measurements have been saved!");
   };
