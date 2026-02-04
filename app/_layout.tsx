@@ -18,6 +18,15 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 
 SplashScreen.preventAutoHideAsync();
 
+// Suppress keep-awake errors on Windows (known Expo issue)
+const originalWarn = console.warn;
+console.warn = (message, ...args) => {
+  if (message && message.toString().includes("Unable to activate keep awake")) {
+    return;
+  }
+  originalWarn(message, ...args);
+};
+
 export const unstable_settings = {
   anchor: "(tabs)",
 };

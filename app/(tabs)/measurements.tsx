@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
     Alert,
     ScrollView,
     StyleSheet,
@@ -15,6 +16,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { BORDER_RADIUS, COLORS, FONT_SIZES, SPACING } from "@/constants/design";
 import { useMeasurements } from "@/contexts/MeasurementsContext";
+import { aiMeasurementsService } from "@/services/aiMeasurementsService";
 
 const MEASUREMENT_TIPS = [
   {
@@ -38,10 +40,69 @@ export default function MeasurementsScreen() {
   const { measurements, updateMeasurements } = useMeasurements();
   const [localMeasurements, setLocalMeasurements] = useState(measurements);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isLoadingAI, setIsLoadingAI] = useState(false);
+  const [height, setHeight] = useState("");
+  const [useAI, setUseAI] = useState(false);
 
   useEffect(() => {
     setLocalMeasurements(measurements);
   }, [measurements]);
+
+  const handleAICapture = async (mode: "camera" | "gallery") => {
+    if (!height || parseFloat(height) <= 0) {
+      Alert.alert(
+        "Height Required",
+        "Please enter your height in cm first before using AI measurements.",
+      );
+      return;
+    }
+
+    try {
+      setIsLoadingAI(true);
+      const imageUri = await aiMeasurementsService.captureFullBodyPhoto(mode);
+
+      if (!imageUri) {
+        setIsLoadingAI(false);
+        return;
+      }
+
+      // Show loading indicator
+      Alert.alert("Processing", "Analyzing your body measurements...");
+
+      const aiMeasurements =
+        await aiMeasurementsService.getMeasurementsFromImage(
+          imageUri,
+          parseFloat(height),
+        );
+
+      // Update local measurements with AI results
+      setLocalMeasurements({
+        shoulders: aiMeasurements.shoulders.toString(),
+        bust: aiMeasurements.bust.toString(),
+        waist: aiMeasurements.waist.toString(),
+        hips: aiMeasurements.hips.toString(),
+      });
+
+      setHasChanges(true);
+      setUseAI(false);
+
+      Alert.alert(
+        "Success",
+        `AI measurements calculated:\nShoulders: ${aiMeasurements.shoulders}cm\nBust: ${aiMeasurements.bust}cm\nWaist: ${aiMeasurements.waist}cm\nHips: ${aiMeasurements.hips}cm`,
+        [{ text: "OK", style: "default" }],
+      );
+    } catch (error) {
+      console.error("AI measurement error:", error);
+      Alert.alert(
+        "Error",
+        error instanceof Error
+          ? error.message
+          : "Failed to process image. Please try again.",
+      );
+    } finally {
+      setIsLoadingAI(false);
+    }
+  };
 
   const handleInputChange = (
     field: keyof typeof measurements,
@@ -136,78 +197,242 @@ export default function MeasurementsScreen() {
           </ThemedText>
         </Animated.View>
 
-        {/* Measurement Tips */}
-        <View style={styles.tipsContainer}>
-          {MEASUREMENT_TIPS.map((tip, index) => (
-            <Animated.View
-              key={index}
-              entering={FadeInDown.delay(200 + index * 100)}
-              style={styles.tipCard}
+        {/* AI Measurements Option */}
+        <Animated.View
+          entering={FadeInDown.delay(150)}
+          style={styles.aiSection}
+        >
+          <TouchableOpacity
+            style={[
+              styles.aiToggleButton,
+              useAI && styles.aiToggleButtonActive,
+            ]}
+            onPress={() => setUseAI(!useAI)}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={useAI ? "sparkles" : "sparkles-outline"}
+              size={24}
+              color={useAI ? "#fff" : COLORS.primary}
+            />
+            <ThemedText
+              style={[styles.aiToggleText, useAI && styles.aiToggleTextActive]}
             >
-              <View style={styles.tipIconContainer}>
-                <Ionicons name={tip.icon} size={24} color={COLORS.primary} />
+              Use AI Body Measurements
+            </ThemedText>
+          </TouchableOpacity>
+
+          {useAI && (
+            <Animated.View
+              entering={FadeInDown.delay(200)}
+              style={styles.aiContent}
+            >
+              <ThemedText style={styles.aiDescription}>
+                Take a full-body photo and let AI calculate your measurements
+                using advanced pose detection.
+              </ThemedText>
+
+              {/* Height Input for AI */}
+              <View style={styles.heightInputGroup}>
+                <View style={styles.inputLabelRow}>
+                  <Ionicons name="resize" size={20} color={COLORS.primary} />
+                  <ThemedText style={styles.inputLabel}>
+                    Your Height (required for accuracy)
+                  </ThemedText>
+                </View>
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={styles.input}
+                    value={height}
+                    onChangeText={(value) => {
+                      const sanitized = value.replace(/[^0-9.]/g, "");
+                      setHeight(sanitized);
+                    }}
+                    placeholder="170"
+                    keyboardType="decimal-pad"
+                    placeholderTextColor={COLORS.gray[400]}
+                  />
+                  <ThemedText style={styles.inputUnit}>cm</ThemedText>
+                </View>
               </View>
-              <View style={styles.tipContent}>
-                <ThemedText style={styles.tipTitle}>{tip.title}</ThemedText>
-                <ThemedText style={styles.tipText}>{tip.tip}</ThemedText>
+
+              {/* AI Capture Buttons */}
+              <View style={styles.aiButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.aiCaptureButton}
+                  onPress={() => handleAICapture("camera")}
+                  disabled={isLoadingAI || !height}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={[COLORS.primary, "#8B5CF6"]}
+                    style={styles.aiCaptureButtonGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    {isLoadingAI ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="camera" size={20} color="#fff" />
+                        <ThemedText style={styles.aiButtonText}>
+                          Take Photo
+                        </ThemedText>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.aiCaptureButton}
+                  onPress={() => handleAICapture("gallery")}
+                  disabled={isLoadingAI || !height}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={["#6366F1", "#8B5CF6"]}
+                    style={styles.aiCaptureButtonGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    {isLoadingAI ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="image" size={20} color="#fff" />
+                        <ThemedText style={styles.aiButtonText}>
+                          From Gallery
+                        </ThemedText>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.aiTips}>
+                <View style={styles.aiTip}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={16}
+                    color={COLORS.primary}
+                  />
+                  <ThemedText style={styles.aiTipText}>
+                    Stand straight with feet shoulder-width apart
+                  </ThemedText>
+                </View>
+                <View style={styles.aiTip}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={16}
+                    color={COLORS.primary}
+                  />
+                  <ThemedText style={styles.aiTipText}>
+                    Wear form-fitting clothing for better accuracy
+                  </ThemedText>
+                </View>
+                <View style={styles.aiTip}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={16}
+                    color={COLORS.primary}
+                  />
+                  <ThemedText style={styles.aiTipText}>
+                    Ensure good lighting and full body is visible
+                  </ThemedText>
+                </View>
               </View>
             </Animated.View>
-          ))}
-        </View>
-
-        {/* Measurement Inputs */}
-        <View style={styles.measurementsContainer}>
-          {renderMeasurementInput("Shoulders", "shoulders", "resize", 500)}
-          {renderMeasurementInput("Bust", "bust", "body", 600)}
-          {renderMeasurementInput("Waist", "waist", "ellipse", 700)}
-          {renderMeasurementInput("Hips", "hips", "radio-button-off", 800)}
-        </View>
-
-        {/* Measurement Guide Image */}
-        <Animated.View
-          entering={FadeInDown.delay(900)}
-          style={styles.guideContainer}
-        >
-          <ThemedText style={styles.guideTitle}>Measurement Guide</ThemedText>
-          <View style={styles.guidePlaceholder}>
-            <Ionicons name="body-outline" size={120} color={COLORS.gray[300]} />
-            <ThemedText style={styles.guidePlaceholderText}>
-              Measurement guide illustration
-            </ThemedText>
-          </View>
-          <View style={styles.guidePoints}>
-            <View style={styles.guidePoint}>
-              <View style={styles.guidePointDot} />
-              <ThemedText style={styles.guidePointText}>
-                <ThemedText style={styles.guidePointBold}>
-                  Shoulders:
-                </ThemedText>{" "}
-                Measure across the back from shoulder point to shoulder point
-              </ThemedText>
-            </View>
-            <View style={styles.guidePoint}>
-              <View style={styles.guidePointDot} />
-              <ThemedText style={styles.guidePointText}>
-                <ThemedText style={styles.guidePointBold}>Bust:</ThemedText>{" "}
-                Measure around the fullest part of your chest
-              </ThemedText>
-            </View>
-            <View style={styles.guidePoint}>
-              <View style={styles.guidePointDot} />
-              <ThemedText style={styles.guidePointText}>
-                <ThemedText style={styles.guidePointBold}>Waist:</ThemedText>{" "}
-                Measure around the narrowest part of your waist
-              </ThemedText>
-            </View>
-            <View style={styles.guidePoint}>
-              <View style={styles.guidePointDot} />
-              <ThemedText style={styles.guidePointText}>
-                <ThemedText style={styles.guidePointBold}>Hips:</ThemedText>{" "}
-                Measure around the fullest part of your hips
-              </ThemedText>
-            </View>
-          </View>
+          )}
         </Animated.View>
+
+        {!useAI && (
+          <>
+            <View style={styles.tipsContainer}>
+              {MEASUREMENT_TIPS.map((tip, index) => (
+                <Animated.View
+                  key={index}
+                  entering={FadeInDown.delay(200 + index * 100)}
+                  style={styles.tipCard}
+                >
+                  <View style={styles.tipIconContainer}>
+                    <Ionicons
+                      name={tip.icon}
+                      size={24}
+                      color={COLORS.primary}
+                    />
+                  </View>
+                  <View style={styles.tipContent}>
+                    <ThemedText style={styles.tipTitle}>{tip.title}</ThemedText>
+                    <ThemedText style={styles.tipText}>{tip.tip}</ThemedText>
+                  </View>
+                </Animated.View>
+              ))}
+            </View>
+
+            {/* Measurement Inputs */}
+            <View style={styles.measurementsContainer}>
+              {renderMeasurementInput("Shoulders", "shoulders", "resize", 500)}
+              {renderMeasurementInput("Bust", "bust", "body", 600)}
+              {renderMeasurementInput("Waist", "waist", "ellipse", 700)}
+              {renderMeasurementInput("Hips", "hips", "radio-button-off", 800)}
+            </View>
+
+            {/* Measurement Guide Image */}
+            <Animated.View
+              entering={FadeInDown.delay(900)}
+              style={styles.guideContainer}
+            >
+              <ThemedText style={styles.guideTitle}>
+                Measurement Guide
+              </ThemedText>
+              <View style={styles.guidePlaceholder}>
+                <Ionicons
+                  name="body-outline"
+                  size={120}
+                  color={COLORS.gray[300]}
+                />
+                <ThemedText style={styles.guidePlaceholderText}>
+                  Measurement guide illustration
+                </ThemedText>
+              </View>
+              <View style={styles.guidePoints}>
+                <View style={styles.guidePoint}>
+                  <View style={styles.guidePointDot} />
+                  <ThemedText style={styles.guidePointText}>
+                    <ThemedText style={styles.guidePointBold}>
+                      Shoulders:
+                    </ThemedText>{" "}
+                    Measure across the back from shoulder point to shoulder
+                    point
+                  </ThemedText>
+                </View>
+                <View style={styles.guidePoint}>
+                  <View style={styles.guidePointDot} />
+                  <ThemedText style={styles.guidePointText}>
+                    <ThemedText style={styles.guidePointBold}>Bust:</ThemedText>{" "}
+                    Measure around the fullest part of your chest
+                  </ThemedText>
+                </View>
+                <View style={styles.guidePoint}>
+                  <View style={styles.guidePointDot} />
+                  <ThemedText style={styles.guidePointText}>
+                    <ThemedText style={styles.guidePointBold}>
+                      Waist:
+                    </ThemedText>{" "}
+                    Measure around the narrowest part of your waist
+                  </ThemedText>
+                </View>
+                <View style={styles.guidePoint}>
+                  <View style={styles.guidePointDot} />
+                  <ThemedText style={styles.guidePointText}>
+                    <ThemedText style={styles.guidePointBold}>Hips:</ThemedText>{" "}
+                    Measure around the fullest part of your hips
+                  </ThemedText>
+                </View>
+              </View>
+            </Animated.View>
+          </>
+        )}
 
         {/* Action Buttons */}
         <Animated.View
@@ -437,5 +662,92 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: "700",
     color: "#fff",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.gray[200],
+    marginVertical: SPACING.lg,
+  },
+  aiSection: {
+    marginBottom: SPACING.lg,
+  },
+  aiToggleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    backgroundColor: "#fff",
+  },
+  aiToggleButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  aiToggleText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "600",
+    color: COLORS.primary,
+    flex: 1,
+  },
+  aiToggleTextActive: {
+    color: "#fff",
+  },
+  aiContent: {
+    marginTop: SPACING.lg,
+    padding: SPACING.lg,
+    backgroundColor: `${COLORS.primary}08`,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}20`,
+  },
+  aiDescription: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray[700],
+    marginBottom: SPACING.lg,
+    lineHeight: 20,
+  },
+  heightInputGroup: {
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  aiButtonsContainer: {
+    flexDirection: "row",
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  aiCaptureButton: {
+    flex: 1,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: "hidden",
+  },
+  aiCaptureButtonGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+  },
+  aiButtonText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  aiTips: {
+    gap: SPACING.md,
+  },
+  aiTip: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    alignItems: "flex-start",
+  },
+  aiTipText: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray[700],
+    lineHeight: 18,
   },
 });

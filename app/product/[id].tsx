@@ -2,8 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
     Alert,
     Dimensions,
     ScrollView,
@@ -18,14 +19,9 @@ import { ThemedView } from "@/components/themed-view";
 import { BORDER_RADIUS, COLORS, FONT_SIZES, SPACING } from "@/constants/design";
 import { useCart } from "@/contexts/CartContext";
 import { useMeasurements } from "@/contexts/MeasurementsContext";
+import { productService } from "@/services/productService";
 
 const { width } = Dimensions.get("window");
-
-const PRODUCT_IMAGES = [
-  "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=800&h=1000&fit=crop",
-  "https://images.unsplash.com/photo-1596755094629-2019c1b84149?w=800&h=1000&fit=crop",
-  "https://images.unsplash.com/photo-1596755093369-786ffb9c3ff7?w=800&h=1000&fit=crop",
-];
 
 const SIZES = ["XS", "S", "M", "L", "XL", "XXL"];
 const COLORS_AVAILABLE = [
@@ -45,18 +41,32 @@ export default function ProductDetailScreen() {
   const [selectedColor, setSelectedColor] = useState(COLORS_AVAILABLE[0]);
   const [quantity, setQuantity] = useState(1);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [product, setProduct] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const product = {
-    id,
-    name: "Cotton Linen Shirt",
-    price: 89.99,
-    description:
-      "Premium cotton-linen blend shirt with a relaxed fit. Perfect for casual occasions and warm weather. Features include button-down collar, chest pocket, and breathable fabric.",
-    rating: 4.5,
-    reviews: 128,
-    inStock: true,
-    brand: "SHOFIT Essentials",
-  };
+  // Fetch product from backend API
+  useEffect(() => {
+    const fetchProduct = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const fetchedProduct = await productService.getProductById(
+          id as string,
+        );
+        setProduct(fetchedProduct);
+      } catch (err) {
+        console.error("Error fetching product:", err);
+        setError("Failed to load product");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchProduct();
+    }
+  }, [id]);
 
   const handleAddToCart = () => {
     if (!selectedSize) {
@@ -68,7 +78,7 @@ export default function ProductDetailScreen() {
       id: id as string,
       name: product.name,
       price: product.price,
-      image: PRODUCT_IMAGES[0],
+      image: product.images[0],
       size: selectedSize,
       color: selectedColor.name,
       quantity: quantity,
@@ -119,230 +129,257 @@ export default function ProductDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Image Gallery */}
-        <Animated.View entering={FadeInUp} style={styles.imageGallery}>
-          <Image
-            source={{ uri: PRODUCT_IMAGES[selectedImage] }}
-            style={styles.mainImage}
-            contentFit="cover"
-          />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ThemedText>Loading product...</ThemedText>
+        </View>
+      ) : error || !product ? (
+        <View style={styles.errorContainer}>
+          <ThemedText style={styles.errorText}>
+            {error || "Failed to load product"}
+          </ThemedText>
           <TouchableOpacity
-            onPress={() => setIsFavorite(!isFavorite)}
-            style={styles.favoriteButton}
+            style={styles.errorButton}
+            onPress={() => router.back()}
           >
-            <Ionicons
-              name={isFavorite ? "heart" : "heart-outline"}
-              size={28}
-              color={isFavorite ? COLORS.error : "#000"}
-            />
+            <ThemedText style={styles.errorButtonText}>Go Back</ThemedText>
           </TouchableOpacity>
-        </Animated.View>
-
-        {/* Thumbnail Images */}
-        <View style={styles.thumbnailContainer}>
-          {PRODUCT_IMAGES.map((img, index) => (
-            <TouchableOpacity
-              key={index}
-              onPress={() => setSelectedImage(index)}
-              style={[
-                styles.thumbnail,
-                selectedImage === index && styles.thumbnailActive,
-              ]}
-            >
+        </View>
+      ) : (
+        <>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {/* Image Gallery */}
+            <Animated.View entering={FadeInUp} style={styles.imageGallery}>
               <Image
-                source={{ uri: img }}
-                style={styles.thumbnailImage}
+                source={{ uri: product.images[selectedImage] }}
+                style={styles.mainImage}
                 contentFit="cover"
               />
-            </TouchableOpacity>
-          ))}
-        </View>
+              <TouchableOpacity
+                onPress={() => setIsFavorite(!isFavorite)}
+                style={styles.favoriteButton}
+              >
+                <Ionicons
+                  name={isFavorite ? "heart" : "heart-outline"}
+                  size={28}
+                  color={isFavorite ? COLORS.error : "#000"}
+                />
+              </TouchableOpacity>
+            </Animated.View>
 
-        {/* Product Info */}
-        <Animated.View
-          entering={FadeInDown.delay(200)}
-          style={styles.productInfo}
-        >
-          <View style={styles.brandRow}>
-            <ThemedText style={styles.brand}>{product.brand}</ThemedText>
-            <View style={styles.rating}>
-              <Ionicons name="star" size={16} color="#FFA500" />
-              <ThemedText style={styles.ratingText}>
-                {product.rating} ({product.reviews})
-              </ThemedText>
-            </View>
-          </View>
-
-          <ThemedText style={styles.productName}>{product.name}</ThemedText>
-          <ThemedText style={styles.price}>
-            ${product.price.toFixed(2)}
-          </ThemedText>
-
-          <View style={styles.stockBadge}>
-            <View
-              style={[
-                styles.stockIndicator,
-                {
-                  backgroundColor: product.inStock
-                    ? COLORS.success
-                    : COLORS.error,
-                },
-              ]}
-            />
-            <ThemedText style={styles.stockText}>
-              {product.inStock ? "In Stock" : "Out of Stock"}
-            </ThemedText>
-          </View>
-
-          <ThemedText style={styles.description}>
-            {product.description}
-          </ThemedText>
-
-          {/* AI Try-On CTA */}
-          <TouchableOpacity
-            onPress={handleTryWithAI}
-            style={styles.aiTryOnButton}
-          >
-            <LinearGradient
-              colors={COLORS.gradients.primary as [string, string, string]}
-              style={styles.aiTryOnGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Ionicons name="camera" size={24} color="#fff" />
-              <ThemedText style={styles.aiTryOnText}>
-                Try with AI Virtual Fitting
-              </ThemedText>
-              <Ionicons name="chevron-forward" size={20} color="#fff" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Size Selection */}
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Select Size</ThemedText>
-            <View style={styles.sizeContainer}>
-              {SIZES.map((size) => (
+            {/* Thumbnail Images */}
+            <View style={styles.thumbnailContainer}>
+              {product.images.map((img: string, index: number) => (
                 <TouchableOpacity
-                  key={size}
-                  onPress={() => setSelectedSize(size)}
+                  key={index}
+                  onPress={() => setSelectedImage(index)}
                   style={[
-                    styles.sizeButton,
-                    selectedSize === size && styles.sizeButtonActive,
+                    styles.thumbnail,
+                    selectedImage === index && styles.thumbnailActive,
                   ]}
                 >
-                  <ThemedText
-                    style={[
-                      styles.sizeText,
-                      selectedSize === size && styles.sizeTextActive,
-                    ]}
-                  >
-                    {size}
-                  </ThemedText>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity>
-              <ThemedText style={styles.sizeGuide}>Size Guide</ThemedText>
-            </TouchableOpacity>
-          </View>
-
-          {/* Color Selection */}
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>
-              Color: {selectedColor.name}
-            </ThemedText>
-            <View style={styles.colorContainer}>
-              {COLORS_AVAILABLE.map((color) => (
-                <TouchableOpacity
-                  key={color.name}
-                  onPress={() => setSelectedColor(color)}
-                  style={[
-                    styles.colorButton,
-                    selectedColor.name === color.name &&
-                      styles.colorButtonActive,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.colorSwatch,
-                      { backgroundColor: color.hex },
-                      color.hex === "#FFFFFF" && styles.colorSwatchBorder,
-                    ]}
+                  <Image
+                    source={{ uri: img }}
+                    style={styles.thumbnailImage}
+                    contentFit="cover"
                   />
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
 
-          {/* Quantity */}
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Quantity</ThemedText>
-            <View style={styles.quantityContainer}>
+            {/* Product Info */}
+            <Animated.View
+              entering={FadeInDown.delay(200)}
+              style={styles.productInfo}
+            >
+              <View style={styles.brandRow}>
+                <ThemedText style={styles.brand}>{product.brand}</ThemedText>
+                <View style={styles.rating}>
+                  <Ionicons name="star" size={16} color="#FFA500" />
+                  <ThemedText style={styles.ratingText}>
+                    {product.rating} ({product.reviews})
+                  </ThemedText>
+                </View>
+              </View>
+
+              <ThemedText style={styles.productName}>{product.name}</ThemedText>
+              <ThemedText style={styles.price}>
+                ${product.price.toFixed(2)}
+              </ThemedText>
+
+              <View style={styles.stockBadge}>
+                <View
+                  style={[
+                    styles.stockIndicator,
+                    {
+                      backgroundColor: product.in_stock
+                        ? COLORS.success
+                        : COLORS.error,
+                    },
+                  ]}
+                />
+                <ThemedText style={styles.stockText}>
+                  {product.in_stock ? "In Stock" : "Out of Stock"}
+                </ThemedText>
+              </View>
+
+              <ThemedText style={styles.description}>
+                {product.description}
+              </ThemedText>
+
+              {/* AI Try-On CTA */}
               <TouchableOpacity
-                onPress={() => setQuantity(Math.max(1, quantity - 1))}
-                style={styles.quantityButton}
+                onPress={handleTryWithAI}
+                style={styles.aiTryOnButton}
               >
-                <Ionicons name="remove" size={20} color="#000" />
+                <LinearGradient
+                  colors={COLORS.gradients.primary as [string, string, string]}
+                  style={styles.aiTryOnGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name="camera" size={24} color="#fff" />
+                  <ThemedText style={styles.aiTryOnText}>
+                    Try with AI Virtual Fitting
+                  </ThemedText>
+                  <Ionicons name="chevron-forward" size={20} color="#fff" />
+                </LinearGradient>
               </TouchableOpacity>
-              <ThemedText style={styles.quantityText}>{quantity}</ThemedText>
-              <TouchableOpacity
-                onPress={() => setQuantity(quantity + 1)}
-                style={styles.quantityButton}
+
+              {/* Size Selection */}
+              <View style={styles.section}>
+                <ThemedText style={styles.sectionTitle}>Select Size</ThemedText>
+                <View style={styles.sizeContainer}>
+                  {SIZES.map((size) => (
+                    <TouchableOpacity
+                      key={size}
+                      onPress={() => setSelectedSize(size)}
+                      style={[
+                        styles.sizeButton,
+                        selectedSize === size && styles.sizeButtonActive,
+                      ]}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.sizeText,
+                          selectedSize === size && styles.sizeTextActive,
+                        ]}
+                      >
+                        {size}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity>
+                  <ThemedText style={styles.sizeGuide}>Size Guide</ThemedText>
+                </TouchableOpacity>
+              </View>
+
+              {/* Color Selection */}
+              <View style={styles.section}>
+                <ThemedText style={styles.sectionTitle}>
+                  Color: {selectedColor.name}
+                </ThemedText>
+                <View style={styles.colorContainer}>
+                  {COLORS_AVAILABLE.map((color) => (
+                    <TouchableOpacity
+                      key={color.name}
+                      onPress={() => setSelectedColor(color)}
+                      style={[
+                        styles.colorButton,
+                        selectedColor.name === color.name &&
+                          styles.colorButtonActive,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.colorSwatch,
+                          { backgroundColor: color.hex },
+                          color.hex === "#FFFFFF" && styles.colorSwatchBorder,
+                        ]}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Quantity */}
+              <View style={styles.section}>
+                <ThemedText style={styles.sectionTitle}>Quantity</ThemedText>
+                <View style={styles.quantityContainer}>
+                  <TouchableOpacity
+                    onPress={() => setQuantity(Math.max(1, quantity - 1))}
+                    style={styles.quantityButton}
+                  >
+                    <Ionicons name="remove" size={20} color="#000" />
+                  </TouchableOpacity>
+                  <ThemedText style={styles.quantityText}>
+                    {quantity}
+                  </ThemedText>
+                  <TouchableOpacity
+                    onPress={() => setQuantity(quantity + 1)}
+                    style={styles.quantityButton}
+                  >
+                    <Ionicons name="add" size={20} color="#000" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Product Details */}
+              <View style={styles.section}>
+                <ThemedText style={styles.sectionTitle}>
+                  Product Details
+                </ThemedText>
+                <View style={styles.detailRow}>
+                  <ThemedText style={styles.detailLabel}>Material</ThemedText>
+                  <ThemedText style={styles.detailValue}>
+                    70% Cotton, 30% Linen
+                  </ThemedText>
+                </View>
+                <View style={styles.detailRow}>
+                  <ThemedText style={styles.detailLabel}>Care</ThemedText>
+                  <ThemedText style={styles.detailValue}>
+                    Machine Wash Cold
+                  </ThemedText>
+                </View>
+                <View style={styles.detailRow}>
+                  <ThemedText style={styles.detailLabel}>Origin</ThemedText>
+                  <ThemedText style={styles.detailValue}>
+                    Made in Portugal
+                  </ThemedText>
+                </View>
+              </View>
+            </Animated.View>
+          </ScrollView>
+
+          {/* Bottom Bar */}
+          <View style={styles.bottomBar}>
+            <View style={styles.priceSection}>
+              <ThemedText style={styles.totalLabel}>Total Price</ThemedText>
+              <ThemedText style={styles.totalPrice}>
+                ${(product.price * quantity).toFixed(2)}
+              </ThemedText>
+            </View>
+            <TouchableOpacity
+              onPress={handleAddToCart}
+              style={styles.addToCartButton}
+            >
+              <LinearGradient
+                colors={COLORS.gradients.primary as [string, string, string]}
+                style={styles.addToCartGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
               >
-                <Ionicons name="add" size={20} color="#000" />
-              </TouchableOpacity>
-            </View>
+                <Ionicons name="cart" size={24} color="#fff" />
+                <ThemedText style={styles.addToCartText}>
+                  Add to Cart
+                </ThemedText>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
-
-          {/* Product Details */}
-          <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>Product Details</ThemedText>
-            <View style={styles.detailRow}>
-              <ThemedText style={styles.detailLabel}>Material</ThemedText>
-              <ThemedText style={styles.detailValue}>
-                70% Cotton, 30% Linen
-              </ThemedText>
-            </View>
-            <View style={styles.detailRow}>
-              <ThemedText style={styles.detailLabel}>Care</ThemedText>
-              <ThemedText style={styles.detailValue}>
-                Machine Wash Cold
-              </ThemedText>
-            </View>
-            <View style={styles.detailRow}>
-              <ThemedText style={styles.detailLabel}>Origin</ThemedText>
-              <ThemedText style={styles.detailValue}>
-                Made in Portugal
-              </ThemedText>
-            </View>
-          </View>
-        </Animated.View>
-      </ScrollView>
-
-      {/* Bottom Bar */}
-      <View style={styles.bottomBar}>
-        <View style={styles.priceSection}>
-          <ThemedText style={styles.totalLabel}>Total Price</ThemedText>
-          <ThemedText style={styles.totalPrice}>
-            ${(product.price * quantity).toFixed(2)}
-          </ThemedText>
-        </View>
-        <TouchableOpacity
-          onPress={handleAddToCart}
-          style={styles.addToCartButton}
-        >
-          <LinearGradient
-            colors={COLORS.gradients.primary as [string, string, string]}
-            style={styles.addToCartGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Ionicons name="cart" size={24} color="#fff" />
-            <ThemedText style={styles.addToCartText}>Add to Cart</ThemedText>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+        </>
+      )}
     </ThemedView>
   );
 }
@@ -351,6 +388,34 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: SPACING.lg,
+    gap: SPACING.lg,
+  },
+  errorText: {
+    fontSize: FONT_SIZES.lg,
+    color: COLORS.error,
+    textAlign: "center",
+  },
+  errorButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  errorButtonText: {
+    color: "#fff",
+    fontWeight: "600",
   },
   header: {
     flexDirection: "row",

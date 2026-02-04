@@ -12,13 +12,15 @@ from contextlib import asynccontextmanager
 
 import cv2
 import numpy as np
-import mediapipe as mp
 from PIL import Image
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import httpx
 from dotenv import load_dotenv
+
+# Import routes
+from backend.routes.products import router as products_router
 
 # Load environment variables
 load_dotenv()
@@ -27,15 +29,37 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# MediaPipe Pose setup
-mp_pose = mp.solutions.pose
-mp_drawing = mp.solutions.drawing_utils
+# MediaPipe Pose setup (lazy-loaded to avoid Windows import issues)
+mp_pose = None
+mp_drawing = None
+
+def _init_mediapipe():
+    """Initialize MediaPipe on first use"""
+    global mp_pose, mp_drawing
+    if mp_pose is None:
+        try:
+            # Import with proper initialization for Windows
+            import sys
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            
+            from mediapipe import solutions
+            mp_pose = solutions.pose
+            mp_drawing = solutions.drawing_utils
+            logger.info("MediaPipe initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize MediaPipe: {e}")
+            logger.info("MediaPipe features will be unavailable. Install with: pip install --upgrade mediapipe")
+            # Don't raise - allow app to continue without MediaPipe
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown events."""
     logger.info("Starting ShoFit Backend...")
+    try:
+        _init_mediapipe()
+    except Exception as e:
+        logger.warning(f"MediaPipe initialization warning: {e}")
     yield
     logger.info("Shutting down ShoFit Backend...")
 
@@ -56,6 +80,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(products_router)
 
 
 # ============================================================================
