@@ -13,7 +13,7 @@ const LOCAL_IP = "192.168.1.5"; // Replace with your actual local IP
 export const API_CONFIG = {
   // FastAPI Backend (Python - body measurements & virtual try-on)
   FASTAPI_URL: __DEV__
-    ? `http://${LOCAL_IP}:8001`
+    ? `http://${LOCAL_IP}:8000`
     : "https://your-production-api.com",
 
   // Node.js Scraper (size chart extraction & Gemini recommendations)

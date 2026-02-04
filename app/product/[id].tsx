@@ -4,13 +4,15 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    ScrollView,
-    StyleSheet,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 
@@ -19,11 +21,13 @@ import { ThemedView } from "@/components/themed-view";
 import { BORDER_RADIUS, COLORS, FONT_SIZES, SPACING } from "@/constants/design";
 import { useCart } from "@/contexts/CartContext";
 import { useMeasurements } from "@/contexts/MeasurementsContext";
+import { aiMeasurementsService } from "@/services/aiMeasurementsService";
 import { productService } from "@/services/productService";
+import { virtualTryOnService } from "@/services/virtualTryOnService";
 
 const { width } = Dimensions.get("window");
 
-const SIZES = ["XS", "S", "M", "L", "XL", "XXL"];
+const SIZES = ["L", "M", "S", "XS", "XL", "XXL"];
 const COLORS_AVAILABLE = [
   { name: "White", hex: "#FFFFFF" },
   { name: "Black", hex: "#000000" },
@@ -37,13 +41,16 @@ export default function ProductDetailScreen() {
   const { addToCart } = useCart();
   const { hasMeasurements } = useMeasurements();
   const [selectedImage, setSelectedImage] = useState(0);
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedSize, setSelectedSize] = useState<string | null>("M");
   const [selectedColor, setSelectedColor] = useState(COLORS_AVAILABLE[0]);
   const [quantity, setQuantity] = useState(1);
   const [isFavorite, setIsFavorite] = useState(false);
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tryOnResult, setTryOnResult] = useState<string | null>(null);
+  const [showTryOnModal, setShowTryOnModal] = useState(false);
+  const [isLoadingTryOn, setIsLoadingTryOn] = useState(false);
 
   // Fetch product from backend API
   useEffect(() => {
@@ -94,7 +101,7 @@ export default function ProductDetailScreen() {
     );
   };
 
-  const handleTryWithAI = () => {
+  const handleTryWithAI = async () => {
     if (!hasMeasurements()) {
       Alert.alert(
         "Measurements Required",
@@ -110,7 +117,78 @@ export default function ProductDetailScreen() {
       return;
     }
 
-    router.push("/(tabs)" as any);
+    try {
+      setIsLoadingTryOn(true);
+
+      // Prompt user to take or select a photo
+      Alert.alert(
+        "Virtual Try-On",
+        "Take a full-body photo to see how this looks on you!",
+        [
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: () => setIsLoadingTryOn(false),
+          },
+          {
+            text: "Take Photo",
+            onPress: async () => {
+              const imageUri =
+                await aiMeasurementsService.captureFullBodyPhoto("camera");
+              if (imageUri) {
+                await performTryOn(imageUri);
+              } else {
+                setIsLoadingTryOn(false);
+              }
+            },
+          },
+          {
+            text: "From Gallery",
+            onPress: async () => {
+              const imageUri =
+                await aiMeasurementsService.captureFullBodyPhoto("gallery");
+              if (imageUri) {
+                await performTryOn(imageUri);
+              } else {
+                setIsLoadingTryOn(false);
+              }
+            },
+          },
+        ],
+      );
+    } catch (error) {
+      console.error("Try-on error:", error);
+      setIsLoadingTryOn(false);
+      Alert.alert("Error", "Failed to start virtual try-on. Please try again.");
+    }
+  };
+
+  const performTryOn = async (personImageUri: string) => {
+    try {
+      Alert.alert(
+        "Processing",
+        "Generating your virtual try-on... This may take 20-30 seconds.",
+      );
+
+      const result = await virtualTryOnService.tryOnSimple(
+        personImageUri,
+        product.images[0],
+        "Upper body",
+      );
+
+      setTryOnResult(result);
+      setShowTryOnModal(true);
+    } catch (error) {
+      console.error("Virtual try-on error:", error);
+      Alert.alert(
+        "Try-On Error",
+        error instanceof Error
+          ? error.message
+          : "Failed to generate virtual try-on. Please try again.",
+      );
+    } finally {
+      setIsLoadingTryOn(false);
+    }
   };
 
   return (
@@ -231,7 +309,11 @@ export default function ProductDetailScreen() {
               {/* AI Try-On CTA */}
               <TouchableOpacity
                 onPress={handleTryWithAI}
-                style={styles.aiTryOnButton}
+                disabled={isLoadingTryOn}
+                style={[
+                  styles.aiTryOnButton,
+                  isLoadingTryOn && styles.aiTryOnButtonDisabled,
+                ]}
               >
                 <LinearGradient
                   colors={COLORS.gradients.primary as [string, string, string]}
@@ -239,11 +321,22 @@ export default function ProductDetailScreen() {
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                 >
-                  <Ionicons name="camera" size={24} color="#fff" />
-                  <ThemedText style={styles.aiTryOnText}>
-                    Try with AI Virtual Fitting
-                  </ThemedText>
-                  <Ionicons name="chevron-forward" size={20} color="#fff" />
+                  {isLoadingTryOn ? (
+                    <>
+                      <ActivityIndicator size="small" color="#fff" />
+                      <ThemedText style={styles.aiTryOnText}>
+                        Processing...
+                      </ThemedText>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="camera" size={24} color="#fff" />
+                      <ThemedText style={styles.aiTryOnText}>
+                        Try with AI Virtual Fitting
+                      </ThemedText>
+                      <Ionicons name="chevron-forward" size={20} color="#fff" />
+                    </>
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
 
@@ -380,6 +473,32 @@ export default function ProductDetailScreen() {
           </View>
         </>
       )}
+
+      <Modal
+        visible={showTryOnModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowTryOnModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Virtual Try-On Result</Text>
+            {tryOnResult && (
+              <Image
+                source={{ uri: `data:image/png;base64,${tryOnResult}` }}
+                style={styles.tryOnImage}
+                resizeMode="contain"
+              />
+            )}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowTryOnModal(false)}
+            >
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -537,6 +656,9 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     overflow: "hidden",
   },
+  aiTryOnButtonDisabled: {
+    opacity: 0.6,
+  },
   aiTryOnGradient: {
     flexDirection: "row",
     alignItems: "center",
@@ -680,6 +802,43 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
   addToCartText: {
+    color: "#fff",
+    fontSize: FONT_SIZES.md,
+    fontWeight: "700",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    width: "90%",
+    maxHeight: "80%",
+    alignItems: "center",
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: "700",
+    marginBottom: SPACING.md,
+    color: COLORS.primary,
+  },
+  tryOnImage: {
+    width: "100%",
+    height: 400,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.md,
+  },
+  closeButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  closeButtonText: {
     color: "#fff",
     fontSize: FONT_SIZES.md,
     fontWeight: "700",

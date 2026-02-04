@@ -9,7 +9,15 @@ import * as ImagePicker from "expo-image-picker";
 
 import { API_CONFIG } from "@/constants/api";
 
+// Use HuggingFace API for real AI measurements
 const API_URL = API_CONFIG.AI_MEASUREMENTS_URL;
+
+export interface Landmark {
+  x: number;
+  y: number;
+  z: number;
+  visibility: number;
+}
 
 export interface AIMeasurementsResponse {
   shoulders: number;
@@ -17,6 +25,9 @@ export interface AIMeasurementsResponse {
   waist: number;
   hips: number;
   message: string;
+  annotated_image?: string;
+  landmarks?: Record<string, Landmark>;
+  image_dimensions?: { width: number; height: number };
 }
 
 class AIMeasurementsService {
@@ -25,10 +36,18 @@ class AIMeasurementsService {
    */
   async pickImage(): Promise<string | null> {
     try {
+      // Request permission
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        console.error("Gallery permission denied");
+        return null;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"] as unknown as ImagePicker.MediaTypeOptions,
         allowsEditing: true,
-        aspect: [3, 4],
+        aspect: [9, 16],
         quality: 0.8,
       });
 
@@ -47,10 +66,17 @@ class AIMeasurementsService {
    */
   async takePhoto(): Promise<string | null> {
     try {
+      // Request permission
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        console.error("Camera permission denied");
+        return null;
+      }
+
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ["images"] as unknown as ImagePicker.MediaTypeOptions,
         allowsEditing: true,
-        aspect: [3, 4],
+        aspect: [9, 16],
         quality: 0.8,
       });
 
@@ -104,6 +130,12 @@ class AIMeasurementsService {
 
       const base64Image = await this.imageToBase64(imageUri);
 
+      console.log("\n=== AI MEASUREMENTS API CALL ===");
+      console.log(`URL: ${API_URL}/analyze/base64`);
+      console.log(`Method: POST`);
+      console.log(`Height: ${height_cm}cm`);
+      console.log("Sending request to HuggingFace API...");
+
       const response = await fetch(`${API_URL}/analyze/base64`, {
         method: "POST",
         headers: {
@@ -112,27 +144,54 @@ class AIMeasurementsService {
         body: JSON.stringify({
           image: base64Image,
           reference_height_cm: height_cm,
-          return_file: false,
+          return_image: true,
+          draw_landmarks: true,
         }),
       });
 
+      console.log(`Response status: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
-        throw new Error(
-          `API Error: ${response.status} - ${response.statusText}`,
-        );
+        const errorText = await response.text();
+        console.error("❌ API Error Response:");
+        console.error(`Status: ${response.status} ${response.statusText}`);
+        console.error("Response body:", errorText);
+
+        // Try to parse JSON error
+        try {
+          const errorJson = JSON.parse(errorText);
+          console.error("Parsed error:", JSON.stringify(errorJson, null, 2));
+          throw new Error(
+            `API Error: ${response.status} - ${errorJson.detail || errorJson.message || response.statusText}`,
+          );
+        } catch (parseError) {
+          throw new Error(
+            `API Error: ${response.status} - ${errorText || response.statusText}`,
+          );
+        }
       }
 
       const data = await response.json();
+      console.log("✅ API response received");
+      console.log("Raw API response structure:", JSON.stringify(data, null, 2));
 
-      let measurements =
-        data.estimated_measurements_cm ??
-        data.measurements ??
-        data.body_measurements ??
-        data.results ??
-        data.result ??
-        data.output ??
-        data.data ??
-        data;
+      // Parse response - works with both HuggingFace and Python backend
+      let measurements = data;
+
+      // Handle nested response structure from HuggingFace
+      if (
+        data.estimated_measurements_cm ||
+        data.measurements ||
+        data.body_measurements
+      ) {
+        measurements =
+          data.estimated_measurements_cm ??
+          data.measurements ??
+          data.body_measurements ??
+          data.results ??
+          data.result ??
+          data;
+      }
 
       if (typeof measurements === "string") {
         try {
@@ -142,39 +201,56 @@ class AIMeasurementsService {
         }
       }
 
-      const shoulders = toNumber(
-        measurements.shoulders ??
-          measurements.shoulder_width ??
-          measurements.shoulder_width_cm ??
-          measurements.shoulder ??
-          measurements.shoulder_cm,
+      console.log(
+        "Extracted measurements object:",
+        JSON.stringify(measurements, null, 2),
       );
-      const bust = toNumber(
-        measurements.bust ??
-          measurements.chest ??
-          measurements.chest_width ??
-          measurements.chest_width_cm ??
-          measurements.chest_circumference ??
-          measurements.chest_circumference_cm ??
-          measurements.bust_cm,
+      console.log("Available keys in measurements:", Object.keys(measurements));
+
+      // Extract width measurements from MediaPipe API
+      // Note: API returns WIDTH measurements from 2D pose detection
+      const shoulderWidth = toNumber(
+        measurements.shoulder_width_cm ??
+          measurements.shoulders_cm ??
+          measurements.shoulders ??
+          measurements.shoulder_width,
       );
-      const waist = toNumber(
-        measurements.waist ??
-          measurements.waist_width ??
-          measurements.waist_width_cm ??
-          measurements.waist_circumference ??
-          measurements.waist_circumference_cm ??
-          measurements.waist_cm,
+      const chestWidth = toNumber(
+        measurements.chest_width_cm ??
+          measurements.bust_cm ??
+          measurements.bust ??
+          measurements.chest_cm ??
+          measurements.chest,
       );
-      const hips = toNumber(
-        measurements.hips ??
-          measurements.hip ??
-          measurements.hip_width ??
-          measurements.hip_width_cm ??
-          measurements.hip_circumference ??
-          measurements.hip_circumference_cm ??
-          measurements.hips_cm,
+      const waistWidth = toNumber(
+        measurements.waist_width_cm ??
+          measurements.waist_cm ??
+          measurements.waist,
       );
+      const hipWidth = toNumber(
+        measurements.hip_width_cm ?? measurements.hips_cm ?? measurements.hips,
+      );
+
+      // Convert widths to approximate circumferences for clothing sizing
+      // Shoulders remain as width (that's how they're measured)
+      // For body circumferences: circumference ≈ width × π (roughly × 3.14, but × 2.5 is more accurate for torso)
+      const shoulders = shoulderWidth;
+      const bust = chestWidth ? chestWidth * 2.5 : undefined;
+      const waist = waistWidth ? waistWidth * 2.5 : undefined;
+      const hips = hipWidth ? hipWidth * 2.5 : undefined;
+
+      console.log("Width measurements:", {
+        shoulderWidth,
+        chestWidth,
+        waistWidth,
+        hipWidth,
+      });
+      console.log("Converted to circumferences:", {
+        shoulders,
+        bust,
+        waist,
+        hips,
+      });
 
       if (
         typeof shoulders !== "number" ||
@@ -182,7 +258,11 @@ class AIMeasurementsService {
         typeof waist !== "number" ||
         typeof hips !== "number"
       ) {
-        console.error("AI measurements raw response:", data);
+        console.error(
+          "❌ Missing measurements. Available keys:",
+          Object.keys(measurements),
+        );
+        console.error("Full measurements object:", measurements);
         console.error("AI measurements extracted values:", {
           shoulders,
           bust,
@@ -192,16 +272,27 @@ class AIMeasurementsService {
         throw new Error("Invalid response format from API");
       }
 
-      return {
+      const finalMeasurements = {
         shoulders: Math.round(shoulders * 10) / 10,
         bust: Math.round(bust * 10) / 10,
         waist: Math.round(waist * 10) / 10,
         hips: Math.round(hips * 10) / 10,
-        message:
-          data.message ||
-          measurements.message ||
-          "Measurements calculated successfully",
+        message: data.message ?? "Measurements calculated successfully",
+        annotated_image: base64Image, // Return original image - we'll draw on it client-side
+        landmarks: data.landmarks,
+        image_dimensions: data.image_dimensions,
       };
+
+      console.log("✅ Final measurements:", {
+        ...finalMeasurements,
+        annotated_image: finalMeasurements.annotated_image
+          ? `[base64 image: ${finalMeasurements.annotated_image.substring(0, 50)}...]`
+          : "NOT FOUND",
+        landmarks: Object.keys(finalMeasurements.landmarks || {}),
+      });
+      console.log("=== END API CALL ===\n");
+
+      return finalMeasurements;
     } catch (error) {
       console.error("Error getting measurements from image:", error);
       throw error;

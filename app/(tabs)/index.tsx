@@ -1,7 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useState } from 'react';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
+import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -13,30 +13,40 @@ import {
     TextInput,
     TouchableOpacity,
     View,
-} from 'react-native';
+} from "react-native";
 import Animated, {
     FadeIn,
     FadeInDown,
     FadeInUp,
     useSharedValue,
-    withSpring
-} from 'react-native-reanimated';
+    withSpring,
+} from "react-native-reanimated";
 
-import { OnboardingScreen } from '@/components/onboarding-screen';
-import { CapturedPhotos, PhotoCaptureFlow } from '@/components/photo-capture-flow';
-import { WelcomeScreen } from '@/components/welcome-screen';
-import { BORDER_RADIUS, COLORS, FONT_SIZES, FONT_WEIGHTS, SHADOWS, SPACING } from '@/constants/design';
+import { OnboardingScreen } from "@/components/onboarding-screen";
+import {
+    CapturedPhotos,
+    PhotoCaptureFlow,
+} from "@/components/photo-capture-flow";
+import { WelcomeScreen } from "@/components/welcome-screen";
+import {
+    BORDER_RADIUS,
+    COLORS,
+    FONT_SIZES,
+    FONT_WEIGHTS,
+    SHADOWS,
+    SPACING,
+} from "@/constants/design";
 
-const { width, height: screenHeight } = Dimensions.get('window');
+const { width, height: screenHeight } = Dimensions.get("window");
 
 const STORAGE_KEYS = {
-  ONBOARDING_COMPLETE: '@shofit_onboarding_complete',
+  ONBOARDING_COMPLETE: "@shofit_onboarding_complete",
 };
 
 // API Configuration
 const API_CONFIG = {
-  FASTAPI_URL: 'http://192.168.1.100:8000', // Update with your IP
-  NODE_SCRAPER_URL: 'http://192.168.1.100:3001',
+  FASTAPI_URL: "http://192.168.1.100:8000", // Update with your IP
+  NODE_SCRAPER_URL: "http://192.168.1.100:3001",
 };
 
 interface MeasurementResult {
@@ -63,13 +73,19 @@ interface ProcessingResult {
   videoUrl?: string;
 }
 
-type AppScreen = 'welcome' | 'onboarding' | 'capture' | 'main' | 'processing' | 'results';
+type AppScreen =
+  | "welcome"
+  | "onboarding"
+  | "capture"
+  | "main"
+  | "processing"
+  | "results";
 
 export default function HomeScreen() {
-  const [currentScreen, setCurrentScreen] = useState<AppScreen>('welcome');
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>("welcome");
   const [photos, setPhotos] = useState<CapturedPhotos | null>(null);
-  const [storeUrl, setStoreUrl] = useState('');
-  const [height, setHeight] = useState('');
+  const [storeUrl, setStoreUrl] = useState("");
+  const [height, setHeight] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<ProcessingResult | null>(null);
 
@@ -79,52 +95,56 @@ export default function HomeScreen() {
 
   const checkOnboardingStatus = async () => {
     try {
-      const completed = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETE);
-      if (completed === 'true') {
+      const completed = await AsyncStorage.getItem(
+        STORAGE_KEYS.ONBOARDING_COMPLETE,
+      );
+      if (completed === "true") {
         // Skip to main after welcome animation
-        setTimeout(() => setCurrentScreen('main'), 3000);
+        setTimeout(() => setCurrentScreen("main"), 3000);
       }
     } catch (error) {
-      console.log('Error checking onboarding status:', error);
+      console.log("Error checking onboarding status:", error);
     }
   };
 
   const handleWelcomeComplete = async () => {
     try {
-      const completed = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETE);
-      if (completed === 'true') {
-        setCurrentScreen('main');
+      const completed = await AsyncStorage.getItem(
+        STORAGE_KEYS.ONBOARDING_COMPLETE,
+      );
+      if (completed === "true") {
+        setCurrentScreen("main");
       } else {
-        setCurrentScreen('onboarding');
+        setCurrentScreen("onboarding");
       }
     } catch (error) {
-      setCurrentScreen('onboarding');
+      setCurrentScreen("onboarding");
     }
   };
 
   const handleOnboardingComplete = async () => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING_COMPLETE, 'true');
+      await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING_COMPLETE, "true");
     } catch (error) {
-      console.log('Error saving onboarding status:', error);
+      console.log("Error saving onboarding status:", error);
     }
-    setCurrentScreen('main');
+    setCurrentScreen("main");
   };
 
   const handlePhotosCapture = (capturedPhotos: CapturedPhotos) => {
     setPhotos(capturedPhotos);
-    setCurrentScreen('main');
+    setCurrentScreen("main");
   };
 
   const getImageBase64 = async (uri: string): Promise<string> => {
     const response = await fetch(uri);
     const blob = await response.blob();
-    
+
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = reader.result as string;
-        const base64Data = base64.split(',')[1] || base64;
+        const base64Data = base64.split(",")[1] || base64;
         resolve(base64Data);
       };
       reader.onerror = reject;
@@ -133,53 +153,59 @@ export default function HomeScreen() {
   };
 
   const handleProcess = async () => {
-    if (!photos?.frontBody) {
-      Alert.alert('Photos Required', 'Please capture your body photos first.');
+    if (!photos?.fullBody) {
+      Alert.alert("Photos Required", "Please capture your body photo first.");
       return;
     }
 
     if (!storeUrl.trim()) {
-      Alert.alert('URL Required', 'Please enter a clothing store URL.');
+      Alert.alert("URL Required", "Please enter a clothing store URL.");
       return;
     }
 
     if (!height.trim() || isNaN(Number(height))) {
-      Alert.alert('Height Required', 'Please enter your height in centimeters.');
+      Alert.alert(
+        "Height Required",
+        "Please enter your height in centimeters.",
+      );
       return;
     }
 
-    setCurrentScreen('processing');
+    setCurrentScreen("processing");
     setIsProcessing(true);
 
     try {
-      // Get base64 for all photos
-      const frontBodyBase64 = await getImageBase64(photos.frontBody);
-      const sideBodyBase64 = photos.sideBody ? await getImageBase64(photos.sideBody) : null;
-      const faceBase64 = photos.face ? await getImageBase64(photos.face) : null;
+      // Get base64 for the photo
+      const fullBodyBase64 = await getImageBase64(photos.fullBody);
 
       // Step 1: Get body measurements
-      const measurementResponse = await fetch(`${API_CONFIG.FASTAPI_URL}/measure`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_base64: frontBodyBase64,
-          side_image_base64: sideBodyBase64,
-          height_cm: Number(height),
-        }),
-      });
+      const measurementResponse = await fetch(
+        `${API_CONFIG.FASTAPI_URL}/measure`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_base64: fullBodyBase64,
+            height_cm: Number(height),
+          }),
+        },
+      );
 
       if (!measurementResponse.ok) {
-        throw new Error('Failed to analyze body measurements');
+        throw new Error("Failed to analyze body measurements");
       }
 
       const measurements: MeasurementResult = await measurementResponse.json();
 
       // Step 2: Scrape size chart
-      const scraperResponse = await fetch(`${API_CONFIG.NODE_SCRAPER_URL}/scrape-size-chart`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: storeUrl.trim() }),
-      });
+      const scraperResponse = await fetch(
+        `${API_CONFIG.NODE_SCRAPER_URL}/scrape-size-chart`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: storeUrl.trim() }),
+        },
+      );
 
       let sizeChart = null;
       if (scraperResponse.ok) {
@@ -188,16 +214,19 @@ export default function HomeScreen() {
       }
 
       // Step 3: Get size recommendation
-      const recommendationResponse = await fetch(`${API_CONFIG.NODE_SCRAPER_URL}/recommend-size`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ measurements, sizeChart }),
-      });
+      const recommendationResponse = await fetch(
+        `${API_CONFIG.NODE_SCRAPER_URL}/recommend-size`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ measurements, sizeChart }),
+        },
+      );
 
       let recommendation: SizeRecommendation = {
-        recommended_size: 'M',
-        confidence: 'medium',
-        reasoning: 'Based on your measurements',
+        recommended_size: "M",
+        confidence: "medium",
+        reasoning: "Based on your measurements",
       };
 
       if (recommendationResponse.ok) {
@@ -207,33 +236,37 @@ export default function HomeScreen() {
       // Step 4: Virtual try-on (optional)
       let tryOnImage: string | undefined;
       try {
-        const tryOnResponse = await fetch(`${API_CONFIG.FASTAPI_URL}/virtual-tryon`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            person_image_base64: frontBodyBase64,
-            clothing_url: storeUrl.trim(),
-          }),
-        });
+        const tryOnResponse = await fetch(
+          `${API_CONFIG.FASTAPI_URL}/virtual-tryon`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              person_image_base64: fullBodyBase64,
+              clothing_url: storeUrl.trim(),
+            }),
+          },
+        );
 
         if (tryOnResponse.ok) {
           const tryOnData = await tryOnResponse.json();
           tryOnImage = tryOnData.result_image_base64;
         }
       } catch (e) {
-        console.log('Virtual try-on not available');
+        console.log("Virtual try-on not available");
       }
 
       setResult({ measurements, recommendation, tryOnImage });
-      setCurrentScreen('results');
-
+      setCurrentScreen("results");
     } catch (error) {
-      console.error('Processing error:', error);
+      console.error("Processing error:", error);
       Alert.alert(
-        'Error',
-        error instanceof Error ? error.message : 'Something went wrong. Please try again.'
+        "Error",
+        error instanceof Error
+          ? error.message
+          : "Something went wrong. Please try again.",
       );
-      setCurrentScreen('main');
+      setCurrentScreen("main");
     } finally {
       setIsProcessing(false);
     }
@@ -241,41 +274,42 @@ export default function HomeScreen() {
 
   const resetApp = () => {
     setPhotos(null);
-    setStoreUrl('');
-    setHeight('');
+    setStoreUrl("");
+    setHeight("");
     setResult(null);
-    setCurrentScreen('main');
+    setCurrentScreen("main");
   };
 
   // Render different screens
-  if (currentScreen === 'welcome') {
+  if (currentScreen === "welcome") {
     return <WelcomeScreen onAnimationComplete={handleWelcomeComplete} />;
   }
 
-  if (currentScreen === 'onboarding') {
+  if (currentScreen === "onboarding") {
     return <OnboardingScreen onComplete={handleOnboardingComplete} />;
   }
 
-  if (currentScreen === 'capture') {
+  if (currentScreen === "capture") {
     return (
       <PhotoCaptureFlow
         onComplete={handlePhotosCapture}
-        onCancel={() => setCurrentScreen('main')}
+        onCancel={() => setCurrentScreen("main")}
+        productUrl={storeUrl}
       />
     );
   }
 
-  if (currentScreen === 'processing') {
+  if (currentScreen === "processing") {
     return <ProcessingScreen />;
   }
 
-  if (currentScreen === 'results' && result) {
+  if (currentScreen === "results" && result) {
     return (
       <ResultsScreen
         result={result}
         photos={photos}
         onReset={resetApp}
-        onTryAgain={() => setCurrentScreen('main')}
+        onTryAgain={() => setCurrentScreen("main")}
       />
     );
   }
@@ -284,7 +318,7 @@ export default function HomeScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <LinearGradient
         colors={COLORS.gradients.dark as [string, string, string]}
@@ -296,65 +330,69 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
-          <Animated.View 
+          <Animated.View
             style={styles.header}
             entering={FadeInDown.duration(600).delay(200)}
           >
-            <Animated.Text style={styles.logo}>👗 ShoFit</Animated.Text>
+            <Animated.Text style={styles.logo}>ShoFit</Animated.Text>
             <Animated.Text style={styles.tagline}>
               Find your perfect fit with AI
             </Animated.Text>
           </Animated.View>
 
           {/* Photo Section */}
-          <Animated.View 
+          <Animated.View
             style={styles.section}
             entering={FadeInUp.duration(600).delay(400)}
           >
             <View style={styles.sectionHeader}>
-              <Animated.Text style={styles.sectionTitle}>📸 Your Photos</Animated.Text>
+              <Animated.Text style={styles.sectionTitle}>
+                Full Body Photo
+              </Animated.Text>
               <Animated.Text style={styles.sectionSubtitle}>
-                {photos ? '3 photos captured' : 'Capture 3 angles'}
+                {photos ? "1 photo captured" : "Capture full body photo"}
               </Animated.Text>
             </View>
 
             {photos ? (
               <View style={styles.photosGrid}>
-                {photos.face && (
+                {photos.fullBody && (
                   <View style={styles.photoThumb}>
-                    <Image source={{ uri: photos.face }} style={styles.thumbImage} contentFit="cover" />
-                    <Animated.Text style={styles.thumbLabel}>Face</Animated.Text>
-                  </View>
-                )}
-                {photos.frontBody && (
-                  <View style={styles.photoThumb}>
-                    <Image source={{ uri: photos.frontBody }} style={styles.thumbImage} contentFit="cover" />
-                    <Animated.Text style={styles.thumbLabel}>Front</Animated.Text>
-                  </View>
-                )}
-                {photos.sideBody && (
-                  <View style={styles.photoThumb}>
-                    <Image source={{ uri: photos.sideBody }} style={styles.thumbImage} contentFit="cover" />
-                    <Animated.Text style={styles.thumbLabel}>Side</Animated.Text>
+                    <Image
+                      source={{ uri: photos.fullBody }}
+                      style={styles.thumbImage}
+                      contentFit="cover"
+                    />
+                    <Animated.Text style={styles.thumbLabel}>
+                      Full Body
+                    </Animated.Text>
                   </View>
                 )}
               </View>
             ) : (
               <TouchableOpacity
                 style={styles.captureCard}
-                onPress={() => setCurrentScreen('capture')}
+                onPress={() => {
+                  if (!storeUrl.trim()) {
+                    Alert.alert(
+                      "Product Required",
+                      "Please enter a product URL first before capturing photos.",
+                    );
+                    return;
+                  }
+                  setCurrentScreen("capture");
+                }}
                 activeOpacity={0.8}
               >
                 <LinearGradient
-                  colors={['rgba(108,99,255,0.2)', 'rgba(108,99,255,0.1)']}
+                  colors={["rgba(108,99,255,0.2)", "rgba(108,99,255,0.1)"]}
                   style={styles.captureCardGradient}
                 >
-                  <Animated.Text style={styles.captureIcon}>📷</Animated.Text>
                   <Animated.Text style={styles.captureText}>
-                    Tap to capture your photos
+                    Tap to capture your photo
                   </Animated.Text>
                   <Animated.Text style={styles.captureSubtext}>
-                    Face • Front Body • Side Profile
+                    Full body photo required
                   </Animated.Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -363,20 +401,33 @@ export default function HomeScreen() {
             {photos && (
               <TouchableOpacity
                 style={styles.retakeButton}
-                onPress={() => setCurrentScreen('capture')}
+                onPress={() => {
+                  if (!storeUrl.trim()) {
+                    Alert.alert(
+                      "Product Required",
+                      "Please enter a product URL first before capturing photos.",
+                    );
+                    return;
+                  }
+                  setCurrentScreen("capture");
+                }}
               >
-                <Animated.Text style={styles.retakeText}>📸 Retake Photos</Animated.Text>
+                <Animated.Text style={styles.retakeText}>
+                  Retake Photo
+                </Animated.Text>
               </TouchableOpacity>
             )}
           </Animated.View>
 
           {/* Height Input */}
-          <Animated.View 
+          <Animated.View
             style={styles.section}
             entering={FadeInUp.duration(600).delay(500)}
           >
             <View style={styles.sectionHeader}>
-              <Animated.Text style={styles.sectionTitle}>📏 Your Height</Animated.Text>
+              <Animated.Text style={styles.sectionTitle}>
+                Your Height
+              </Animated.Text>
             </View>
             <View style={styles.inputContainer}>
               <TextInput
@@ -392,12 +443,14 @@ export default function HomeScreen() {
           </Animated.View>
 
           {/* URL Input */}
-          <Animated.View 
+          <Animated.View
             style={styles.section}
             entering={FadeInUp.duration(600).delay(600)}
           >
             <View style={styles.sectionHeader}>
-              <Animated.Text style={styles.sectionTitle}>🔗 Clothing URL</Animated.Text>
+              <Animated.Text style={styles.sectionTitle}>
+                Product URL
+              </Animated.Text>
             </View>
             <TextInput
               style={[styles.input, styles.urlInput]}
@@ -425,7 +478,7 @@ export default function HomeScreen() {
                 end={{ x: 1, y: 0 }}
               >
                 <Animated.Text style={styles.processButtonText}>
-                  ✨ Find My Perfect Size
+                  Find My Perfect Size
                 </Animated.Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -454,11 +507,17 @@ function ProcessingScreen() {
           <View style={styles.processingIcon}>
             <Animated.Text style={styles.processingEmoji}>🔮</Animated.Text>
           </View>
-          <Animated.Text style={styles.processingTitle}>Analyzing...</Animated.Text>
+          <Animated.Text style={styles.processingTitle}>
+            Analyzing...
+          </Animated.Text>
           <Animated.Text style={styles.processingSubtitle}>
             Our AI is measuring your body and finding the perfect size
           </Animated.Text>
-          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 24 }} />
+          <ActivityIndicator
+            size="large"
+            color={COLORS.primary}
+            style={{ marginTop: 24 }}
+          />
         </Animated.View>
       </LinearGradient>
     </View>
@@ -473,7 +532,12 @@ interface ResultsScreenProps {
   onTryAgain: () => void;
 }
 
-function ResultsScreen({ result, photos, onReset, onTryAgain }: ResultsScreenProps) {
+function ResultsScreen({
+  result,
+  photos,
+  onReset,
+  onTryAgain,
+}: ResultsScreenProps) {
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -486,21 +550,25 @@ function ResultsScreen({ result, photos, onReset, onTryAgain }: ResultsScreenPro
           showsVerticalScrollIndicator={false}
         >
           {/* Success Header */}
-          <Animated.View 
+          <Animated.View
             style={styles.resultsHeader}
             entering={FadeInDown.duration(600)}
           >
             <Animated.Text style={styles.successEmoji}>🎉</Animated.Text>
-            <Animated.Text style={styles.resultsTitle}>Your Perfect Fit!</Animated.Text>
+            <Animated.Text style={styles.resultsTitle}>
+              Your Perfect Fit!
+            </Animated.Text>
           </Animated.View>
 
           {/* Size Recommendation Card */}
           <Animated.View entering={FadeInUp.duration(600).delay(200)}>
             <LinearGradient
-              colors={['#4CAF50', '#45a049']}
+              colors={["#4CAF50", "#45a049"]}
               style={styles.sizeCard}
             >
-              <Animated.Text style={styles.sizeLabel}>Recommended Size</Animated.Text>
+              <Animated.Text style={styles.sizeLabel}>
+                Recommended Size
+              </Animated.Text>
               <Animated.Text style={styles.sizeValue}>
                 {result.recommendation.recommended_size}
               </Animated.Text>
@@ -518,27 +586,51 @@ function ResultsScreen({ result, photos, onReset, onTryAgain }: ResultsScreenPro
           </Animated.View>
 
           {/* Measurements Card */}
-          <Animated.View 
+          <Animated.View
             style={styles.measurementsCard}
             entering={FadeInUp.duration(600).delay(400)}
           >
-            <Animated.Text style={styles.cardTitle}>📏 Your Measurements</Animated.Text>
+            <Animated.Text style={styles.cardTitle}>
+              Your Measurements
+            </Animated.Text>
             <View style={styles.measurementsGrid}>
-              <MeasurementItem label="Shoulder" value={`${result.measurements.shoulder_width_cm?.toFixed(1) || '--'} cm`} />
-              <MeasurementItem label="Chest" value={`${result.measurements.chest_width_cm?.toFixed(1) || '--'} cm`} />
-              <MeasurementItem label="Waist" value={`${result.measurements.waist_width_cm?.toFixed(1) || '--'} cm`} />
-              <MeasurementItem label="Hip" value={`${result.measurements.hip_width_cm?.toFixed(1) || '--'} cm`} />
-              <MeasurementItem label="Upper Body" value={`${result.measurements.upper_body_height_cm?.toFixed(1) || '--'} cm`} />
-              <MeasurementItem label="W/H Ratio" value={result.measurements.waist_to_hip_ratio?.toFixed(2) || '--'} />
+              <MeasurementItem
+                label="Shoulder"
+                value={`${result.measurements.shoulder_width_cm?.toFixed(1) || "--"} cm`}
+              />
+              <MeasurementItem
+                label="Chest"
+                value={`${result.measurements.chest_width_cm?.toFixed(1) || "--"} cm`}
+              />
+              <MeasurementItem
+                label="Waist"
+                value={`${result.measurements.waist_width_cm?.toFixed(1) || "--"} cm`}
+              />
+              <MeasurementItem
+                label="Hip"
+                value={`${result.measurements.hip_width_cm?.toFixed(1) || "--"} cm`}
+              />
+              <MeasurementItem
+                label="Upper Body"
+                value={`${result.measurements.upper_body_height_cm?.toFixed(1) || "--"} cm`}
+              />
+              <MeasurementItem
+                label="W/H Ratio"
+                value={
+                  result.measurements.waist_to_hip_ratio?.toFixed(2) || "--"
+                }
+              />
             </View>
           </Animated.View>
 
           {/* AI Reasoning */}
-          <Animated.View 
+          <Animated.View
             style={styles.reasoningCard}
             entering={FadeInUp.duration(600).delay(500)}
           >
-            <Animated.Text style={styles.cardTitle}>🤖 AI Analysis</Animated.Text>
+            <Animated.Text style={styles.cardTitle}>
+              🤖 AI Analysis
+            </Animated.Text>
             <Animated.Text style={styles.reasoningText}>
               {result.recommendation.reasoning}
             </Animated.Text>
@@ -546,11 +638,13 @@ function ResultsScreen({ result, photos, onReset, onTryAgain }: ResultsScreenPro
 
           {/* Virtual Try-On */}
           {result.tryOnImage && (
-            <Animated.View 
+            <Animated.View
               style={styles.tryOnCard}
               entering={FadeInUp.duration(600).delay(600)}
             >
-              <Animated.Text style={styles.cardTitle}>👔 Virtual Try-On</Animated.Text>
+              <Animated.Text style={styles.cardTitle}>
+                👔 Virtual Try-On
+              </Animated.Text>
               <Image
                 source={{ uri: `data:image/png;base64,${result.tryOnImage}` }}
                 style={styles.tryOnImage}
@@ -561,15 +655,22 @@ function ResultsScreen({ result, photos, onReset, onTryAgain }: ResultsScreenPro
 
           {/* Action Buttons */}
           <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={onTryAgain}>
-              <Animated.Text style={styles.secondaryButtonText}>Try Another</Animated.Text>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={onTryAgain}
+            >
+              <Animated.Text style={styles.secondaryButtonText}>
+                Try Another
+              </Animated.Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={onReset}>
               <LinearGradient
                 colors={COLORS.gradients.primary as [string, string, string]}
                 style={styles.primaryButton}
               >
-                <Animated.Text style={styles.primaryButtonText}>Start Over</Animated.Text>
+                <Animated.Text style={styles.primaryButtonText}>
+                  Start Over
+                </Animated.Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -597,8 +698,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   scrollView: {
     flex: 1,
@@ -609,7 +710,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: SPACING.xxl,
   },
   logo: {
@@ -626,9 +727,9 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: SPACING.md,
   },
   sectionTitle: {
@@ -642,19 +743,15 @@ const styles = StyleSheet.create({
   },
   captureCard: {
     borderRadius: BORDER_RADIUS.xl,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   captureCardGradient: {
     padding: SPACING.xxl,
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: BORDER_RADIUS.xl,
     borderWidth: 2,
     borderColor: COLORS.primary,
-    borderStyle: 'dashed',
-  },
-  captureIcon: {
-    fontSize: 64,
-    marginBottom: SPACING.md,
+    borderStyle: "dashed",
   },
   captureText: {
     fontSize: FONT_SIZES.lg,
@@ -667,12 +764,12 @@ const styles = StyleSheet.create({
     color: COLORS.gray[400],
   },
   photosGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     gap: SPACING.md,
   },
   photoThumb: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   thumbImage: {
     width: 90,
@@ -686,7 +783,7 @@ const styles = StyleSheet.create({
   },
   retakeButton: {
     marginTop: SPACING.md,
-    alignItems: 'center',
+    alignItems: "center",
   },
   retakeText: {
     color: COLORS.primary,
@@ -694,8 +791,8 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   input: {
     flex: 1,
@@ -708,7 +805,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.gray[800],
   },
   inputSuffix: {
-    position: 'absolute',
+    position: "absolute",
     right: SPACING.lg,
     color: COLORS.gray[500],
     fontSize: FONT_SIZES.md,
@@ -719,7 +816,7 @@ const styles = StyleSheet.create({
   processButton: {
     padding: SPACING.lg,
     borderRadius: BORDER_RADIUS.xl,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: SPACING.md,
     ...SHADOWS.glow,
   },
@@ -733,11 +830,11 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(108,99,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(108,99,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: SPACING.lg,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   processingEmoji: {
     fontSize: 56,
@@ -746,18 +843,18 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xxxl,
     fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.white,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: SPACING.sm,
   },
   processingSubtitle: {
     fontSize: FONT_SIZES.md,
     color: COLORS.gray[400],
-    textAlign: 'center',
+    textAlign: "center",
     paddingHorizontal: SPACING.xl,
   },
   // Results Screen
   resultsHeader: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: SPACING.xl,
   },
   successEmoji: {
@@ -772,14 +869,14 @@ const styles = StyleSheet.create({
   sizeCard: {
     padding: SPACING.xl,
     borderRadius: BORDER_RADIUS.xl,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: SPACING.lg,
     ...SHADOWS.lg,
   },
   sizeLabel: {
     fontSize: FONT_SIZES.sm,
-    color: 'rgba(255,255,255,0.8)',
-    textTransform: 'uppercase',
+    color: "rgba(255,255,255,0.8)",
+    textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: SPACING.xs,
   },
@@ -789,7 +886,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   confidenceBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: "rgba(255,255,255,0.2)",
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.full,
@@ -802,7 +899,7 @@ const styles = StyleSheet.create({
   },
   alternativeText: {
     fontSize: FONT_SIZES.sm,
-    color: 'rgba(255,255,255,0.7)',
+    color: "rgba(255,255,255,0.7)",
     marginTop: SPACING.sm,
   },
   measurementsCard: {
@@ -818,12 +915,12 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   measurementsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: SPACING.sm,
   },
   measurementItem: {
-    width: '48%',
+    width: "48%",
     backgroundColor: COLORS.gray[800],
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
@@ -856,12 +953,12 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
   tryOnImage: {
-    width: '100%',
+    width: "100%",
     height: 400,
     borderRadius: BORDER_RADIUS.lg,
   },
   actionButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: SPACING.md,
     marginTop: SPACING.lg,
   },
@@ -871,7 +968,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.xl,
     borderWidth: 2,
     borderColor: COLORS.gray[700],
-    alignItems: 'center',
+    alignItems: "center",
   },
   secondaryButtonText: {
     color: COLORS.gray[300],
@@ -882,7 +979,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: SPACING.lg,
     borderRadius: BORDER_RADIUS.xl,
-    alignItems: 'center',
+    alignItems: "center",
   },
   primaryButtonText: {
     color: COLORS.white,

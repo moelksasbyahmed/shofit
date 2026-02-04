@@ -30,14 +30,34 @@ export interface VirtualTryOnResponse {
 class VirtualTryOnService {
   /**
    * Convert image URI to base64
+   * Handles local file paths, data URIs, and remote HTTP/HTTPS URLs
    */
   private async imageToBase64(imageUri: string): Promise<string> {
     try {
-      // Check if already base64
+      // Check if already base64 data URI
       if (imageUri.startsWith("data:")) {
         return imageUri.split(",")[1];
       }
 
+      // Check if it's an HTTP/HTTPS URL
+      if (imageUri.startsWith("http://") || imageUri.startsWith("https://")) {
+        const response = await fetch(imageUri);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch image: ${response.status} ${response.statusText}`,
+          );
+        }
+        const blob = await response.blob();
+        const buffer = await blob.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+      }
+
+      // Assume it's a local file path
       const base64 = await FileSystem.readAsStringAsync(imageUri, {
         encoding: "base64",
       });

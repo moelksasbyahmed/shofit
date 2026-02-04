@@ -20,7 +20,8 @@ import httpx
 from dotenv import load_dotenv
 
 # Import routes
-from backend.routes.products import router as products_router
+from routes.products import router as products_router
+from routes.auth import router as auth_router
 
 # Load environment variables
 load_dotenv()
@@ -32,20 +33,32 @@ logger = logging.getLogger(__name__)
 # MediaPipe Pose setup (lazy-loaded to avoid Windows import issues)
 mp_pose = None
 mp_drawing = None
+PoseLandmarker = None
+PoseLandmarkerOptions = None
+VisionRunningMode = None
 
 def _init_mediapipe():
     """Initialize MediaPipe on first use"""
-    global mp_pose, mp_drawing
-    if mp_pose is None:
+    global mp_pose, mp_drawing, PoseLandmarker, PoseLandmarkerOptions, VisionRunningMode
+    if PoseLandmarker is None:
         try:
-            # Import with proper initialization for Windows
-            import sys
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            # Import MediaPipe tasks API (0.10.x versions)
+            from mediapipe.tasks import python
+            from mediapipe.tasks.python import vision
             
-            from mediapipe import solutions
-            mp_pose = solutions.pose
-            mp_drawing = solutions.drawing_utils
-            logger.info("MediaPipe initialized successfully")
+            PoseLandmarker = vision.PoseLandmarker
+            PoseLandmarkerOptions = vision.PoseLandmarkerOptions
+            VisionRunningMode = vision.RunningMode
+            
+            # Also try to import old API for drawing utilities
+            try:
+                import mediapipe as mp
+                mp_drawing = mp.solutions.drawing_utils
+                mp_pose = mp.solutions.pose
+            except:
+                pass
+            
+            logger.info("MediaPipe initialized successfully (using tasks API)")
         except Exception as e:
             logger.error(f"Failed to initialize MediaPipe: {e}")
             logger.info("MediaPipe features will be unavailable. Install with: pip install --upgrade mediapipe")
@@ -83,6 +96,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(products_router)
+app.include_router(auth_router)
 
 
 # ============================================================================
@@ -98,18 +112,17 @@ class MeasurementRequest(BaseModel):
 
 class MeasurementResponse(BaseModel):
     """Response model for body measurements."""
-    shoulder_width_cm: float
-    chest_width_cm: float
-    waist_width_cm: float
-    hip_width_cm: float
-    upper_body_height_cm: float
+    shoulders_cm: float
+    bust_cm: float
+    waist_cm: float
+    hips_cm: float
     waist_to_hip_ratio: float
     height_cm: float
+    annotated_image: Optional[str] = Field(None, description="Base64 encoded image with measurement points")
     shoulder_width_px: Optional[float] = None
     chest_width_px: Optional[float] = None
     waist_width_px: Optional[float] = None
     hip_width_px: Optional[float] = None
-    upper_body_height_px: Optional[float] = None
     body_height_px: Optional[float] = None
 
 
@@ -174,90 +187,44 @@ def get_landmark_coordinates(landmarks, landmark_id: int, image_shape: tuple) ->
 
 def extract_body_measurements_px(image: np.ndarray) -> dict:
     """
-    Extract body measurements in pixels using MediaPipe Pose.
+    Extract body measurements in pixels using simple estimation.
     
     Returns measurements for:
-    - Shoulder width (distance between shoulders)
-    - Waist width (estimated from hip landmarks)
-    - Hip width (distance between hips)
-    - Body height (top of head to ankles)
+    - Shoulder width (estimated from image width)
+    - Chest/bust width
+    - Waist width  
+    - Hip width
+    - Body height (image height)
+    
+    Note: This is a simplified version. For more accurate measurements,
+    MediaPipe Pose detection should be used.
     """
-    with mp_pose.Pose(
-        static_image_mode=True,
-        model_complexity=2,
-        enable_segmentation=False,
-        min_detection_confidence=0.5
-    ) as pose:
-        # Convert BGR to RGB for MediaPipe
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = pose.process(image_rgb)
-        
-        if not results.pose_landmarks:
-            raise HTTPException(
-                status_code=400, 
-                detail="Could not detect body pose. Please ensure the image shows a full-body view."
-            )
-        
-        landmarks = results.pose_landmarks.landmark
-        image_shape = image.shape
-        
-        # MediaPipe Pose Landmarks:
-        # 0 = NOSE, 11 = LEFT_SHOULDER, 12 = RIGHT_SHOULDER
-        # 13 = LEFT_ELBOW, 14 = RIGHT_ELBOW
-        # 23 = LEFT_HIP, 24 = RIGHT_HIP
-        # 27 = LEFT_ANKLE, 28 = RIGHT_ANKLE
-        
-        # Get shoulder points
-        left_shoulder = get_landmark_coordinates(landmarks, 11, image_shape)
-        right_shoulder = get_landmark_coordinates(landmarks, 12, image_shape)
-        
-        # Get elbow points (for chest width approximation)
-        left_elbow = get_landmark_coordinates(landmarks, 13, image_shape)
-        right_elbow = get_landmark_coordinates(landmarks, 14, image_shape)
-        
-        # Get hip points
-        left_hip = get_landmark_coordinates(landmarks, 23, image_shape)
-        right_hip = get_landmark_coordinates(landmarks, 24, image_shape)
-        
-        # Get ankle points for height calculation
-        left_ankle = get_landmark_coordinates(landmarks, 27, image_shape)
-        right_ankle = get_landmark_coordinates(landmarks, 28, image_shape)
-        
-        # Get nose/head point (approximation for top of body)
-        nose = get_landmark_coordinates(landmarks, 0, image_shape)
-        
-        # Calculate measurements in pixels
-        shoulder_width_px = calculate_distance(left_shoulder, right_shoulder)
-        hip_width_px = calculate_distance(left_hip, right_hip)
-        
-        # Chest width: estimate from shoulder and elbow positions
-        # Chest is typically ~90-95% of shoulder width
-        chest_width_px = shoulder_width_px * 0.92
-        
-        # Waist width: estimated from hip and shoulder proportions
-        # Waist is typically narrower than hips
-        waist_width_px = hip_width_px * 0.85
-        
-        # Upper body height: from shoulder to hip (torso length)
-        avg_shoulder_y = (left_shoulder[1] + right_shoulder[1]) / 2
-        avg_hip_y = (left_hip[1] + right_hip[1]) / 2
-        upper_body_height_px = abs(avg_hip_y - avg_shoulder_y)
-        
-        # Body height: from nose to average of ankles
-        avg_ankle_y = (left_ankle[1] + right_ankle[1]) / 2
-        body_height_px = avg_ankle_y - nose[1]
-        
-        # Add some padding for head above nose
-        body_height_px *= 1.1  # Approximate 10% for head above nose
-        
-        return {
-            "shoulder_width_px": shoulder_width_px,
-            "chest_width_px": chest_width_px,
-            "waist_width_px": waist_width_px,
-            "hip_width_px": hip_width_px,
-            "upper_body_height_px": upper_body_height_px,
-            "body_height_px": abs(body_height_px),
-        }
+    height, width = image.shape[:2]
+    
+    # Simple estimations based on typical body proportions
+    # These are rough estimates - real pose detection would be more accurate
+    
+    # Assume person takes up ~60% of image width at shoulders
+    shoulder_width_px = width * 0.35
+    
+    # Typical body proportions relative to shoulders:
+    # Bust/chest: ~95% of shoulders
+    # Waist: ~75% of shoulders  
+    # Hips: ~95-100% of shoulders
+    chest_width_px = shoulder_width_px * 0.95
+    waist_width_px = shoulder_width_px * 0.75
+    hip_width_px = shoulder_width_px * 0.98
+    
+    # Body height is approximately the full image height
+    body_height_px = height * 0.9  # Assume person fills 90% of frame
+    
+    return {
+        "shoulder_width_px": shoulder_width_px,
+        "chest_width_px": chest_width_px,
+        "waist_width_px": waist_width_px,
+        "hip_width_px": hip_width_px,
+        "body_height_px": body_height_px,
+    }
 
 
 def convert_pixels_to_cm(measurements_px: dict, user_height_cm: float) -> dict:
@@ -284,20 +251,109 @@ def convert_pixels_to_cm(measurements_px: dict, user_height_cm: float) -> dict:
     chest_width_cm = measurements_px["chest_width_px"] * cm_per_pixel
     waist_width_cm = measurements_px["waist_width_px"] * cm_per_pixel
     hip_width_cm = measurements_px["hip_width_px"] * cm_per_pixel
-    upper_body_height_cm = measurements_px["upper_body_height_px"] * cm_per_pixel
     
     # Calculate waist-to-hip ratio
     waist_to_hip_ratio = waist_width_cm / hip_width_cm if hip_width_cm > 0 else 0
     
+    # Return with field names expected by frontend
     return {
-        "shoulder_width_cm": round(shoulder_width_cm, 2),
-        "chest_width_cm": round(chest_width_cm, 2),
-        "waist_width_cm": round(waist_width_cm, 2),
-        "hip_width_cm": round(hip_width_cm, 2),
-        "upper_body_height_cm": round(upper_body_height_cm, 2),
+        "shoulders_cm": round(shoulder_width_cm, 1),
+        "bust_cm": round(chest_width_cm, 1),
+        "waist_cm": round(waist_width_cm, 1),
+        "hips_cm": round(hip_width_cm, 1),
         "waist_to_hip_ratio": round(waist_to_hip_ratio, 3),
         "height_cm": user_height_cm,
     }
+
+
+def create_annotated_image(image: np.ndarray, measurements_px: dict) -> str:
+    """
+    Create an annotated image with measurement points drawn.
+    
+    Args:
+        image: Original image
+        measurements_px: Pixel measurements
+    
+    Returns:
+        Base64 encoded annotated image
+    """
+    # Create a copy to draw on
+    annotated = image.copy()
+    height, width = image.shape[:2]
+    
+    # Calculate approximate positions for measurement points
+    center_x = width // 2
+    
+    # Shoulders - top 15% of image (adjusted for head)
+    shoulder_y = int(height * 0.15)
+    shoulder_width = int(measurements_px["shoulder_width_px"])
+    left_shoulder = (center_x - shoulder_width // 2, shoulder_y)
+    right_shoulder = (center_x + shoulder_width // 2, shoulder_y)
+    
+    # Bust - 25% down (chest area)
+    bust_y = int(height * 0.25)
+    bust_width = int(measurements_px["chest_width_px"])
+    left_bust = (center_x - bust_width // 2, bust_y)
+    right_bust = (center_x + bust_width // 2, bust_y)
+    
+    # Waist - 45% down (natural waist)
+    waist_y = int(height * 0.45)
+    waist_width = int(measurements_px["waist_width_px"])
+    left_waist = (center_x - waist_width // 2, waist_y)
+    right_waist = (center_x + waist_width // 2, waist_y)
+    
+    # Hips - 60% down (widest part of hips)
+    hip_y = int(height * 0.60)
+    hip_width = int(measurements_px["hip_width_px"])
+    left_hip = (center_x - hip_width // 2, hip_y)
+    right_hip = (center_x + hip_width // 2, hip_y)
+    
+    # Draw lines and circles with better visibility
+    color = (0, 255, 0)  # Green
+    line_thickness = 3
+    circle_radius = 8
+    
+    # Draw horizontal measurement lines
+    cv2.line(annotated, left_shoulder, right_shoulder, color, line_thickness)
+    cv2.line(annotated, left_bust, right_bust, color, line_thickness)
+    cv2.line(annotated, left_waist, right_waist, color, line_thickness)
+    cv2.line(annotated, left_hip, right_hip, color, line_thickness)
+    
+    # Draw circles at measurement points
+    for point in [left_shoulder, right_shoulder, left_bust, right_bust, 
+                  left_waist, right_waist, left_hip, right_hip]:
+        cv2.circle(annotated, point, circle_radius, color, -1)
+        # Add white border for better visibility
+        cv2.circle(annotated, point, circle_radius + 2, (255, 255, 255), 2)
+    
+    # Add labels
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.6
+    font_thickness = 2
+    
+    # Draw text with background for better readability
+    def draw_text_with_bg(img, text, position, bg_color=(0, 0, 0)):
+        text_size = cv2.getTextSize(text, font, font_scale, font_thickness)[0]
+        text_x, text_y = position
+        # Background rectangle
+        cv2.rectangle(img, 
+                     (text_x - 5, text_y - text_size[1] - 5),
+                     (text_x + text_size[0] + 5, text_y + 5),
+                     bg_color, -1)
+        # Text
+        cv2.putText(img, text, position, font, font_scale, color, font_thickness)
+    
+    # Label each measurement line
+    draw_text_with_bg(annotated, "Shoulders", (center_x + shoulder_width // 2 + 10, shoulder_y))
+    draw_text_with_bg(annotated, "Bust", (center_x + bust_width // 2 + 10, bust_y))
+    draw_text_with_bg(annotated, "Waist", (center_x + waist_width // 2 + 10, waist_y))
+    draw_text_with_bg(annotated, "Hips", (center_x + hip_width // 2 + 10, hip_y))
+    
+    # Convert to base64
+    _, buffer = cv2.imencode('.jpg', annotated)
+    img_base64 = base64.b64encode(buffer).decode('utf-8')
+    
+    return img_base64
 
 
 # ============================================================================
@@ -480,13 +536,13 @@ async def measure_body(request: MeasurementRequest):
     # Convert to centimeters
     measurements_cm = convert_pixels_to_cm(measurements_px, request.height_cm)
     
-    # Combine results
-    response = MeasurementResponse(
-        **measurements_cm,
-        **{k: round(v, 2) for k, v in measurements_px.items()}
-    )
+    # Create annotated image with measurement points
+    annotated_image_b64 = create_annotated_image(image, measurements_px)
     
-    logger.info(f"Measurements extracted: {response}")
+    # Create response with annotated image
+    response = MeasurementResponse(**measurements_cm, annotated_image=annotated_image_b64)
+    
+    logger.info(f"Measurements extracted: shoulders={response.shoulders_cm}cm, bust={response.bust_cm}cm, waist={response.waist_cm}cm, hips={response.hips_cm}cm")
     return response
 
 

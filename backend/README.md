@@ -1,147 +1,213 @@
 # ShoFit Backend API
 
-FastAPI server for body measurements and virtual try-on functionality.
+A modular FastAPI backend for the ShoFit application with body measurements, virtual try-on, user authentication, and product management.
+
+## Features
+
+- **User Authentication**: Signup, login, and user management
+- **Product Management**: CRUD operations for clothing products
+- **Body Measurements**: AI-powered body measurement extraction using MediaPipe
+- **Virtual Try-On**: Integration with AI models for virtual clothing try-on
 
 ## Setup
 
-### Requirements
-
-- Python 3.9+
-- pip
-
-### Installation
-
-1. Navigate to the backend directory:
+### 1. Install Dependencies
 
 ```bash
 cd backend
-```
-
-2. Install dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
-## Running the Server
+### 2. Start the Server
 
-Start the development server:
+**Important**: You must run the server from the `backend` directory.
+
+#### Option 1: Using Virtual Environment (Windows - Recommended)
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### Option 2: Using Virtual Environment (Linux/Mac)
 
 ```bash
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+cd backend
+.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The server will start on `http://localhost:8000`
+#### Option 3: Using system Python
 
-### Server Options
-
-- `--reload` - Auto-reload on code changes (development only)
-- `--host 0.0.0.0` - Listen on all network interfaces
-- `--port 8000` - Port number
-
-## API Documentation
-
-Once the server is running, visit:
-
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
-
-## Project Structure
-
+```bash
+cd backend
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
-backend/
-├── main.py              # FastAPI app and core endpoints
-├── models.py            # Pydantic data models
-├── routes/
-│   └── products.py      # Product API endpoints
-├── requirements.txt     # Python dependencies
-└── README.md           # This file
-```
+
+The API will be available at:
+
+- Local: http://localhost:8000
+- Network: http://YOUR_IP:8000
+- Docs: http://localhost:8000/docs
 
 ## API Endpoints
+
+### Authentication
+
+#### Signup
+
+```http
+POST /api/auth/signup
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "name": "John Doe",
+  "password": "securepassword"
+}
+```
+
+#### Login
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "securepassword"
+}
+```
 
 ### Products
 
 #### Get All Products
 
-```
+```http
 GET /api/products
+GET /api/products?category=Shirts
+GET /api/products?min_price=50&max_price=100
+GET /api/products?search=cotton
 ```
-
-Query parameters:
-
-- `category` - Filter by category (e.g., "Shirts", "Dresses")
-- `min_price` - Minimum price filter
-- `max_price` - Maximum price filter
-- `search` - Search by name or brand
 
 #### Get Single Product
 
-```
+```http
 GET /api/products/{product_id}
 ```
 
-#### Get Products by Category
+#### Create Product
 
-```
-GET /api/products/category/{category}
-```
+```http
+POST /api/products
+Content-Type: application/json
 
-## Example Requests
-
-### Get all products
-
-```bash
-curl http://localhost:8000/api/products
-```
-
-### Get product by ID
-
-```bash
-curl http://localhost:8000/api/products/1
-```
-
-### Filter by category
-
-```bash
-curl "http://localhost:8000/api/products?category=Shirts"
+{
+  "id": "7",
+  "name": "Product Name",
+  "price": 99.99,
+  "description": "Product description",
+  "category": "Shirts",
+  "brand": "SHOFIT Essentials",
+  "rating": 4.5,
+  "reviews": 10,
+  "in_stock": true,
+  "images": [
+    "https://example.com/image1.jpg"
+  ],
+  "available_colors": ["White", "Black"],
+  "available_sizes": ["S", "M", "L", "XL"]
+}
 ```
 
-### Search products
+#### Update Product
 
-```bash
-curl "http://localhost:8000/api/products?search=Cotton"
+```http
+PUT /api/products/{product_id}
+Content-Type: application/json
+
+{
+  "id": "7",
+  "name": "Updated Product Name",
+  "price": 89.99,
+  ...
+}
 ```
 
-## Database
+#### Delete Product
 
-Currently uses in-memory product database. To migrate to a real database, update `routes/products.py`.
+```http
+DELETE /api/products/{product_id}
+```
+
+## Adding Products
+
+### Method 1: Using the API (Recommended)
+
+Visit http://localhost:8000/docs and use the interactive Swagger UI, or make a POST request:
+
+```python
+import requests
+
+product = {
+    "id": "10",
+    "name": "New Shirt",
+    "price": 79.99,
+    "description": "A great shirt",
+    "category": "Shirts",
+    "brand": "SHOFIT Essentials",
+    "rating": 4.5,
+    "reviews": 0,
+    "in_stock": True,
+    "images": [
+        "https://images.unsplash.com/photo-example?w=800&h=1000&fit=crop"
+    ],
+    "available_colors": ["White", "Black", "Navy"],
+    "available_sizes": ["XS", "S", "M", "L", "XL", "XXL"]
+}
+
+response = requests.post(
+    "http://localhost:8000/api/products",
+    json=product
+)
+print(response.json())
+```
+
+### Method 2: Direct Database Edit
+
+Edit `backend/data/products.json` directly (created automatically on first run).
+
+## Database Structure
+
+The backend uses JSON file storage for development:
+
+- `data/users.json`: User accounts (passwords are hashed)
+- `data/products.json`: Product catalog
+
+In production, replace with PostgreSQL, MongoDB, or any database.
+
+## Frontend Configuration
+
+Update `constants/api.ts` in your React Native app with your computer's IP:
+
+```typescript
+export const API_BASE_URL = "http://192.168.1.X:8000";
+```
+
+Find your IP:
+
+- Windows: `ipconfig`
+- Mac/Linux: `ifconfig`
 
 ## Troubleshooting
 
-### ModuleNotFoundError: No module named 'fastapi'
+**Network request failed:**
 
-Install dependencies: `pip install -r requirements.txt`
+- Ensure backend is running
+- Update API_BASE_URL with correct IP
+- Check firewall settings
+- Both devices on same network
 
-### Port 8000 already in use
+**Database errors:**
 
-Change the port:
-
-```bash
-python -m uvicorn main:app --reload --port 8001
-```
-
-### MediaPipe import errors (Windows)
-
-MediaPipe has known issues on Windows. The app will still run without it - pose detection features will be unavailable until fixed.
-
-## Environment Variables
-
-Create a `.env` file in the backend directory if needed:
-
-```env
-# Example environment variables
-DEBUG=True
-```
-
-See `.env.example` for more options.
+- Delete `data/` folder to reset
+- Check file permissions

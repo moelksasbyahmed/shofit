@@ -1,0 +1,84 @@
+{
+  "1": {
+    "id": "1",
+    "name": "Cotton Linen Shirt",
+    "price": 89.99,
+    "description": "Premium cotton-linen blend shirt with a relaxed fit. Perfect for casual occasions and warm weather.",
+    "category": "Shirts",
+    "brand": "SHOFIT Essentials",
+    "rating": 4.5,
+    "reviews": 128,
+    "in_stock": true,
+    "images": [
+      "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=800&h=1000&fit=crop",
+      "https://images.unsplash.com/photo-1596755094629-2019c1b84149?w=800&h=1000&fit=crop"
+    ],
+    "available_colors": [
+      "White",
+      "Black",
+      "Navy",
+      "Gray"
+    ],
+    "available_sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL",
+      "XXL"
+    ]
+  },
+  "2": {
+    "id": "2",
+    "name": "Classic Denim Jacket",
+    "price": 129.99,
+    "description": "Timeless denim jacket made from premium quality fabric.",
+    "category": "Jackets",
+    "brand": "SHOFIT Essentials",
+    "rating": 4.7,
+    "reviews": 95,
+    "in_stock": true,
+    "images": [
+      "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800&h=1000&fit=crop"
+    ],
+    "available_colors": [
+      "Blue",
+      "Black",
+      "Light Blue"
+    ],
+    "available_sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL",
+      "XXL"
+    ]
+  },
+  "3": {
+    "id": "3",
+    "name": "Summer Floral Dress",
+    "price": 79.99,
+    "description": "Vibrant floral dress perfect for summer adventures.",
+    "category": "Dresses",
+    "brand": "SHOFIT Essentials",
+    "rating": 4.3,
+    "reviews": 156,
+    "in_stock": true,
+    "images": [
+      "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=800&h=1000&fit=crop"
+    ],
+    "available_colors": [
+      "Floral",
+      "White",
+      "Pink"
+    ],
+    "available_sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ]
+  }
+}
