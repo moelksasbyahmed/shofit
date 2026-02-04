@@ -24,6 +24,9 @@ export const API_CONFIG = {
   // MediaPipe AI Body Measurements (HuggingFace Space)
   AI_MEASUREMENTS_URL: "https://mohamedlkooo-mediapip-pos.hf.space",
 
+  // OOTDiffusion Virtual Try-On (HuggingFace Space)
+  VIRTUAL_TRYON_URL: "https://mohamedlkooo-ootddiffusionshofit.hf.space",
+
   // Request timeout in milliseconds
   TIMEOUT: 60000,
 };

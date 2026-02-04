@@ -4,8 +4,8 @@
  * https://mohamedlkooo-ootddiffusionshofit.hf.space/docs
  */
 
-import * as FileSystem from "expo-file-system/legacy";
 import { API_CONFIG } from "@/constants/api";
+import * as FileSystem from "expo-file-system/legacy";
 
 const API_URL = API_CONFIG.VIRTUAL_TRYON_URL;
 

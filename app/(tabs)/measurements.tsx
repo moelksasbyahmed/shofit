@@ -8,7 +8,7 @@ import {
     StyleSheet,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
@@ -43,10 +43,44 @@ export default function MeasurementsScreen() {
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [height, setHeight] = useState("");
   const [useAI, setUseAI] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [tryOnResult, setTryOnResult] = useState<string | null>(null);
+  const [showTryOnModal, setShowTryOnModal] = useState(false);
 
   useEffect(() => {
     setLocalMeasurements(measurements);
   }, [measurements]);
+
+  const handleVirtualTryOn = async (personImageUri: string) => {
+    try {
+      // For demo purposes, we'll use a sample garment URL
+      // In production, this would come from the product selection
+      const sampleGarmentUrl =
+        "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400";
+
+      Alert.alert(
+        "Virtual Try-On",
+        "Generating virtual try-on... This may take 20-30 seconds.",
+      );
+
+      const result = await virtualTryOnService.tryOnSimple(
+        personImageUri,
+        sampleGarmentUrl,
+        "Upper body",
+      );
+
+      setTryOnResult(result);
+      setShowTryOnModal(true);
+    } catch (error) {
+      console.error("Virtual try-on error:", error);
+      Alert.alert(
+        "Try-On Error",
+        error instanceof Error
+          ? error.message
+          : "Failed to generate virtual try-on. Please try again.",
+      );
+    }
+  };
 
   const handleAICapture = async (mode: "camera" | "gallery") => {
     if (!height || parseFloat(height) <= 0) {
@@ -65,6 +99,8 @@ export default function MeasurementsScreen() {
         setIsLoadingAI(false);
         return;
       }
+
+      setCapturedImage(imageUri);
 
       // Show loading indicator
       Alert.alert("Processing", "Analyzing your body measurements...");
@@ -88,8 +124,14 @@ export default function MeasurementsScreen() {
 
       Alert.alert(
         "Success",
-        `AI measurements calculated:\nShoulders: ${aiMeasurements.shoulders}cm\nBust: ${aiMeasurements.bust}cm\nWaist: ${aiMeasurements.waist}cm\nHips: ${aiMeasurements.hips}cm`,
-        [{ text: "OK", style: "default" }],
+        `AI measurements calculated:\nShoulders: ${aiMeasurements.shoulders}cm\nBust: ${aiMeasurements.bust}cm\nWaist: ${aiMeasurements.waist}cm\nHips: ${aiMeasurements.hips}cm\n\nWould you like to try virtual try-on?`,
+        [
+          { text: "Later", style: "cancel" },
+          {
+            text: "Try Now",
+            onPress: () => handleVirtualTryOn(imageUri),
+          },
+        ],
       );
     } catch (error) {
       console.error("AI measurement error:", error);
@@ -475,6 +517,52 @@ export default function MeasurementsScreen() {
           </TouchableOpacity>
         </Animated.View>
       </ScrollView>
+
+      {/* Virtual Try-On Result Modal */}
+      <Modal
+        visible={showTryOnModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowTryOnModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>
+                Virtual Try-On Result
+              </ThemedText>
+              <TouchableOpacity
+                onPress={() => setShowTryOnModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#000" />
+              </TouchableOpacity>
+            </View>
+
+            {tryOnResult && (
+              <Image
+                source={{ uri: tryOnResult }}
+                style={styles.tryOnImage}
+                resizeMode="contain"
+              />
+            )}
+
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setShowTryOnModal(false)}
+            >
+              <LinearGradient
+                colors={[COLORS.primary, "#8B5CF6"]}
+                style={styles.modalButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <ThemedText style={styles.modalButtonText}>Close</ThemedText>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -749,5 +837,51 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.gray[700],
     lineHeight: 18,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    width: "90%",
+    maxHeight: "80%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: SPACING.lg,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: "700",
+  },
+  modalCloseButton: {
+    padding: SPACING.sm,
+  },
+  tryOnImage: {
+    width: "100%",
+    height: 400,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.lg,
+  },
+  modalButton: {
+    borderRadius: BORDER_RADIUS.md,
+    overflow: "hidden",
+  },
+  modalButtonGradient: {
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    alignItems: "center",
+  },
+  modalButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: "600",
+    color: "#fff",
   },
 });
