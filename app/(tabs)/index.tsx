@@ -28,6 +28,7 @@ import {
     PhotoCaptureFlow,
 } from "@/components/photo-capture-flow";
 import { WelcomeScreen } from "@/components/welcome-screen";
+import { API_CONFIG } from "@/constants/api";
 import {
     BORDER_RADIUS,
     COLORS,
@@ -41,12 +42,6 @@ const { width, height: screenHeight } = Dimensions.get("window");
 
 const STORAGE_KEYS = {
   ONBOARDING_COMPLETE: "@shofit_onboarding_complete",
-};
-
-// API Configuration
-const API_CONFIG = {
-  FASTAPI_URL: "http://192.168.1.100:8000", // Update with your IP
-  NODE_SCRAPER_URL: "http://192.168.1.100:3001",
 };
 
 interface MeasurementResult {

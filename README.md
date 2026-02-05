@@ -133,11 +133,8 @@ shofit/
 # Install dependencies
 npm install
 
-# Install expo-image-picker
-npx expo install expo-image-picker
-
 # Start the Expo development server
-npx expo start
+npx expo start --tunnel
 ```
 
 ### 2. Setup FastAPI Backend (Phase 2)
@@ -195,7 +192,30 @@ The scraper server will run on `http://localhost:3001`
 - `POST /recommend-size` - Get AI size recommendation
 - `POST /analyze` - Combined scrape + recommend
 
-### 4. Configure API Keys
+### 4. Configure Environment Files
+
+Create environment files for each service:
+
+```bash
+# Frontend (Expo)
+cp .env.example .env
+
+# Backend (FastAPI)
+cp backend/.env.example backend/.env
+
+# Scraper (Node)
+cp scraper/.env.example scraper/.env
+```
+
+**Frontend (.env):**
+
+```env
+EXPO_PUBLIC_API_HOST=YOUR_LOCAL_IP
+EXPO_PUBLIC_FASTAPI_PORT=8000
+EXPO_PUBLIC_NODE_SCRAPER_PORT=3001
+```
+
+> For phones on the same Wi‑Fi, use your computer's LAN IP. For remote devices, use a tunnel URL and set `EXPO_PUBLIC_FASTAPI_URL` and `EXPO_PUBLIC_NODE_SCRAPER_URL` instead of host/ports.
 
 **Backend (.env):**
 
@@ -209,18 +229,9 @@ HUGGINGFACE_API_TOKEN=your_token_here
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-### 5. Update API URLs
+### 5. Update API URLs (No Hard‑Coding)
 
-In `app/(tabs)/index.tsx`, update the API configuration:
-
-```typescript
-const API_CONFIG = {
-  FASTAPI_URL: "http://YOUR_LOCAL_IP:8000",
-  NODE_SCRAPER_URL: "http://YOUR_LOCAL_IP:3001",
-};
-```
-
-> **Note:** Use your machine's local IP address (not localhost) for mobile devices to connect.
+All API URLs are now read from the Expo `.env` file via `EXPO_PUBLIC_*` variables in [constants/api.ts](constants/api.ts). No edits are needed in app code.
 
 ## 📱 How to Use
 

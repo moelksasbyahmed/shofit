@@ -6,19 +6,25 @@
  * - For production, use your deployed API URLs
  */
 
-// Get the local machine's IP for development
-// You can find this with: ipconfig (Windows) or ifconfig (Mac/Linux)
-const LOCAL_IP = "192.168.1.5"; // Replace with your actual local IP
+// Environment-driven config (Expo: use EXPO_PUBLIC_* variables)
+const DEV_HOST = process.env.EXPO_PUBLIC_API_HOST ?? "localhost";
+const FASTAPI_PORT = process.env.EXPO_PUBLIC_FASTAPI_PORT ?? "8000";
+const NODE_SCRAPER_PORT = process.env.EXPO_PUBLIC_NODE_SCRAPER_PORT ?? "3001";
+
+const FASTAPI_URL =
+  process.env.EXPO_PUBLIC_FASTAPI_URL ?? `http://${DEV_HOST}:${FASTAPI_PORT}`;
+
+const NODE_SCRAPER_URL =
+  process.env.EXPO_PUBLIC_NODE_SCRAPER_URL ??
+  `http://${DEV_HOST}:${NODE_SCRAPER_PORT}`;
 
 export const API_CONFIG = {
   // FastAPI Backend (Python - body measurements & virtual try-on)
-  FASTAPI_URL: __DEV__
-    ? `http://${LOCAL_IP}:8000`
-    : "https://your-production-api.com",
+  FASTAPI_URL: __DEV__ ? FASTAPI_URL : "https://your-production-api.com",
 
   // Node.js Scraper (size chart extraction & Gemini recommendations)
   NODE_SCRAPER_URL: __DEV__
-    ? `http://${LOCAL_IP}:3001`
+    ? NODE_SCRAPER_URL
     : "https://your-production-scraper.com",
 
   // MediaPipe AI Body Measurements (HuggingFace Space)
