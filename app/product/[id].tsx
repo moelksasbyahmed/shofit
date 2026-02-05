@@ -454,6 +454,24 @@ export default function ProductDetailScreen() {
                 ${(product.price * quantity).toFixed(2)}
               </ThemedText>
             </View>
+
+            {/* Virtual Try-On Button */}
+            <TouchableOpacity
+              onPress={handleTryWithAI}
+              style={styles.tryOnButton}
+              disabled={isLoadingTryOn}
+            >
+              {isLoadingTryOn ? (
+                <ActivityIndicator color={COLORS.primary} />
+              ) : (
+                <>
+                  <Ionicons name="camera" size={20} color={COLORS.primary} />
+                  <ThemedText style={styles.tryOnText}>Try On</ThemedText>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {/* Add to Cart Button */}
             <TouchableOpacity
               onPress={handleAddToCart}
               style={styles.addToCartButton}
@@ -789,8 +807,26 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: COLORS.primary,
   },
+  tryOnButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: SPACING.xs,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    backgroundColor: "#fff",
+    minWidth: 100,
+  },
+  tryOnText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZES.md,
+    fontWeight: "700",
+  },
   addToCartButton: {
-    flex: 1.5,
+    flex: 1,
     borderRadius: BORDER_RADIUS.md,
     overflow: "hidden",
   },

@@ -24,7 +24,9 @@ from routes.products import router as products_router
 from routes.auth import router as auth_router
 
 # Load environment variables
-load_dotenv()
+BASE_DIR = os.path.dirname(__file__)
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+load_dotenv(os.path.join(BASE_DIR, "..", ".env"))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -129,8 +131,9 @@ class MeasurementResponse(BaseModel):
 class VirtualTryOnRequest(BaseModel):
     """Request model for virtual try-on."""
     person_image_base64: str = Field(..., description="Base64 encoded person image")
-    clothing_url: str = Field(..., description="URL of the clothing item")
+    clothing_url: str = Field(default="", description="URL of the clothing item")
     clothing_image_base64: Optional[str] = Field(None, description="Base64 encoded clothing image (optional)")
+    category: str = Field(default="Upper body", description="Garment category: 'Upper body', 'Lower body', or 'Dress'")
 
 
 class VirtualTryOnResponse(BaseModel):
@@ -375,61 +378,107 @@ async def fetch_clothing_image(url: str) -> str:
             )
 
 
-async def call_ootdiffusion_api(person_image_b64: str, clothing_image_b64: str) -> str:
+async def call_ootdiffusion_api(person_image_b64: str, clothing_image_b64: str, category: str = "Upper body") -> str:
     """
-    Call OOTDiffusion API on Hugging Face for virtual try-on.
-    
-    Note: This uses the Hugging Face Inference API. You may need to adjust
-    the endpoint based on the specific model deployment.
+    Call OOTDiffusion API on Hugging Face Space for virtual try-on.
+    API: https://mohamedlkooo-ootddiffusionshofit.hf.space/tryon
     """
-    hf_token = os.getenv("HUGGINGFACE_API_TOKEN")
-    if not hf_token:
-        raise HTTPException(
-            status_code=500,
-            detail="Hugging Face API token not configured. Set HUGGINGFACE_API_TOKEN env variable."
-        )
+    api_url = "https://mohamedlkooo-ootddiffusionshofit.hf.space/tryon/base64"
     
-    # OOTDiffusion API endpoint (adjust based on actual deployment)
-    api_url = "https://api-inference.huggingface.co/models/levihsu/OOTDiffusion"
+    logger.info(f"Calling OOTDiffusion API at {api_url}")
+    logger.info(f"Category: {category}")
     
-    headers = {
-        "Authorization": f"Bearer {hf_token}",
-        "Content-Type": "application/json",
-    }
-    
-    # Prepare the request payload
+    # Prepare base64 request payload
     payload = {
-        "inputs": {
-            "person_image": person_image_b64,
-            "clothing_image": clothing_image_b64,
-            "category": "upper_body",  # Options: upper_body, lower_body, dress
-        },
-        "parameters": {
-            "num_inference_steps": 20,
-            "guidance_scale": 2.5,
-        }
+        "model_image": person_image_b64,
+        "garment_image": clothing_image_b64,
+        "category": category,
+        "n_samples": 1,
+        "n_steps": 20,
+        "image_scale": 2.0,
+        "seed": -1,
     }
     
-    async with httpx.AsyncClient() as client:
+    # Get HuggingFace token if available
+    headers = {}
+    hf_token = os.getenv("HUGGINGFACE_API_TOKEN")
+    api_url_with_token = api_url
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+        headers["X-Auth-Token"] = hf_token
+        api_url_with_token = f"{api_url}?token={hf_token}"
+        logger.info("Using HuggingFace authentication token")
+    else:
+        logger.warning("No HUGGINGFACE_API_TOKEN found - may hit quota limits")
+    
+    async with httpx.AsyncClient(timeout=120.0) as client:
         try:
+            if headers.get("Authorization"):
+                try:
+                    whoami = await client.get(
+                        "https://huggingface.co/api/whoami-v2",
+                        headers=headers,
+                    )
+                    logger.info(f"HF whoami status: {whoami.status_code}")
+                    if whoami.status_code == 200:
+                        logger.info(f"HF user: {whoami.json().get('name')}")
+                    else:
+                        logger.warning(f"HF token invalid: {whoami.text[:200]}")
+                except Exception as e:
+                    logger.warning(f"HF token check failed: {e}")
+
+            logger.info("Sending request to OOTDiffusion API with base64 payload...")
             response = await client.post(
-                api_url,
-                headers=headers,
+                api_url_with_token,
                 json=payload,
-                timeout=120.0  # Virtual try-on can take time
+                headers=headers,
             )
+            
+            logger.info(f"Response status: {response.status_code}")
+            
+            # Log response body for debugging
+            if response.status_code != 200:
+                response_text = response.text
+                logger.error(f"Error response body: {response_text[:500]}")  # First 500 chars
+            
+            if response.status_code == 422:
+                # Log validation error details
+                error_detail = response.text
+                logger.error(f"Validation error (422): {error_detail}")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid request format: {error_detail}"
+                )
             
             if response.status_code == 503:
                 # Model is loading
+                logger.warning("Model is loading, returning None")
                 return None
             
             response.raise_for_status()
             
-            # Response should be the generated image
+            # Parse response
             result = response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0].get("generated_image", "")
-            return ""
+            logger.info(f"API response received: success={result.get('success')}")
+            
+            if result.get("success") is False:
+                logger.error(f"API returned success=false: {result.get('message')}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=result.get("message", "Virtual try-on failed")
+                )
+            
+            # Return the base64 image (support multiple keys)
+            image_b64 = result.get("image") or result.get("result_image_base64") or result.get("output")
+            if image_b64:
+                logger.info("✅ Virtual try-on image generated successfully")
+                return image_b64
+            else:
+                logger.error("No image in API response")
+                raise HTTPException(
+                    status_code=500,
+                    detail="No image returned from virtual try-on API"
+                )
             
         except httpx.HTTPStatusError as e:
             logger.error(f"OOTDiffusion API error: {e}")
@@ -555,6 +604,8 @@ async def virtual_tryon(request: VirtualTryOnRequest):
     and optionally a video of the person walking in the clothing.
     """
     logger.info("Processing virtual try-on request...")
+    logger.info(f"Request has person_image_base64: {len(request.person_image_base64) if request.person_image_base64 else 0} chars")
+    logger.info(f"Request has clothing_image_base64: {len(request.clothing_image_base64) if request.clothing_image_base64 else 0} chars")
     
     # Get clothing image
     if request.clothing_image_base64:
@@ -569,8 +620,23 @@ async def virtual_tryon(request: VirtualTryOnRequest):
     if "," in person_b64:
         person_b64 = person_b64.split(",")[1]
     
+    if clothing_b64 and "," in clothing_b64:
+        clothing_b64 = clothing_b64.split(",")[1]
+    
+    logger.info(f"After processing - person_b64: {len(person_b64) if person_b64 else 0} chars")
+    logger.info(f"After processing - clothing_b64: {len(clothing_b64) if clothing_b64 else 0} chars")
+    
+    if not person_b64 or not clothing_b64:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing images: person={'OK' if person_b64 else 'MISSING'}, clothing={'OK' if clothing_b64 else 'MISSING'}"
+        )
+    
+    # Get category from request or default to "Upper body"
+    category = getattr(request, 'category', 'Upper body')
+    
     # Call OOTDiffusion for virtual try-on
-    try_on_result = await call_ootdiffusion_api(person_b64, clothing_b64)
+    try_on_result = await call_ootdiffusion_api(person_b64, clothing_b64, category)
     
     if not try_on_result:
         raise HTTPException(
