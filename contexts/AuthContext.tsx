@@ -1,4 +1,5 @@
-import { dbService, User } from "@/services/database";
+import { API_BASE_URL } from "@/constants/api";
+import { User } from "@/services/database";
 import React, {
     createContext,
     ReactNode,
@@ -28,8 +29,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const initAuth = async () => {
     try {
-      await dbService.init();
-      // In a real app, check for stored session/token
+      // Skip database initialization for now
+      console.log("Auth initialized successfully");
       setIsLoading(false);
     } catch (error) {
       console.error("Error initializing auth:", error);
@@ -39,9 +40,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const verifiedUser = await dbService.verifyUser(email, password);
-      if (verifiedUser) {
-        setUser(verifiedUser);
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const data = await response.json();
+      if (data.success && data.user) {
+        setUser(data.user);
         return true;
       }
       return false;
@@ -57,9 +68,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
   ): Promise<boolean> => {
     try {
-      const newUser = await dbService.createUser(email, name, password);
-      if (newUser) {
-        setUser(newUser);
+      const response = await fetch(`${API_BASE_URL}/api/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, name, password }),
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const data = await response.json();
+      if (data.success && data.user) {
+        setUser(data.user);
         return true;
       }
       return false;

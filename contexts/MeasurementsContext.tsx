@@ -1,15 +1,16 @@
 import { dbService } from "@/services/database";
 import React, {
-    createContext,
-    ReactNode,
-    useCallback,
-    useContext,
-    useEffect,
-    useState,
+  createContext,
+  ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
 } from "react";
 import { useAuth } from "./AuthContext";
 
 export interface Measurements {
+  height: string;
   shoulders: string;
   bust: string;
   waist: string;
@@ -30,6 +31,7 @@ const MeasurementsContext = createContext<MeasurementsContextType | undefined>(
 export function MeasurementsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [measurements, setMeasurements] = useState<Measurements>({
+    height: "",
     shoulders: "",
     bust: "",
     waist: "",
@@ -43,10 +45,11 @@ export function MeasurementsProvider({ children }: { children: ReactNode }) {
       const saved = await dbService.getMeasurements(user.id);
       if (saved) {
         setMeasurements({
-          shoulders: saved.shoulders.toString(),
-          bust: saved.bust.toString(),
-          waist: saved.waist.toString(),
-          hips: saved.hips.toString(),
+          height: saved.height?.toString() || "",
+          shoulders: saved.shoulders?.toString() || "",
+          bust: saved.bust?.toString() || "",
+          waist: saved.waist?.toString() || "",
+          hips: saved.hips?.toString() || "",
         });
       }
     } catch (error) {
@@ -60,6 +63,7 @@ export function MeasurementsProvider({ children }: { children: ReactNode }) {
     } else {
       // Clear measurements when logged out
       setMeasurements({
+        height: "",
         shoulders: "",
         bust: "",
         waist: "",
@@ -75,9 +79,16 @@ export function MeasurementsProvider({ children }: { children: ReactNode }) {
     setMeasurements(updated);
 
     // Save to database if all fields are filled
-    if (updated.shoulders && updated.bust && updated.waist && updated.hips) {
+    if (
+      updated.height &&
+      updated.shoulders &&
+      updated.bust &&
+      updated.waist &&
+      updated.hips
+    ) {
       try {
         await dbService.saveMeasurements(user.id, {
+          height: parseFloat(updated.height),
           shoulders: parseFloat(updated.shoulders),
           bust: parseFloat(updated.bust),
           waist: parseFloat(updated.waist),
@@ -91,6 +102,7 @@ export function MeasurementsProvider({ children }: { children: ReactNode }) {
 
   const hasMeasurements = () => {
     return !!(
+      measurements.height &&
       measurements.shoulders &&
       measurements.bust &&
       measurements.waist &&

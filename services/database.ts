@@ -13,6 +13,7 @@ export interface User {
 export interface UserMeasurements {
   id: number;
   user_id: number;
+  height: number;
   shoulders: number;
   bust: number;
   waist: number;
@@ -30,57 +31,87 @@ export interface UserImage {
 
 class DatabaseService {
   private db: SQLite.SQLiteDatabase | null = null;
+  private initPromise: Promise<void> | null = null;
 
   async init() {
-    try {
-      this.db = await SQLite.openDatabaseAsync(DATABASE_NAME);
-      await this.createTables();
-      console.log("Database initialized successfully");
-    } catch (error) {
-      console.error("Error initializing database:", error);
-      throw error;
+    if (this.initPromise) {
+      return this.initPromise;
     }
+
+    this.initPromise = (async () => {
+      try {
+        this.db = await SQLite.openDatabaseAsync(DATABASE_NAME);
+
+        // Create tables directly without calling ensureInitialized
+        if (!this.db) throw new Error("Database not initialized");
+
+        // Users table
+        await this.db.execAsync(`
+          CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            password TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+
+        // Measurements table
+        await this.db.execAsync(`
+          CREATE TABLE IF NOT EXISTS measurements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            height REAL DEFAULT 0,
+            shoulders REAL NOT NULL,
+            bust REAL NOT NULL,
+            waist REAL NOT NULL,
+            hips REAL NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+          );
+        `);
+
+        // Add height column if it doesn't exist (for existing databases)
+        try {
+          await this.db.execAsync(`
+            ALTER TABLE measurements ADD COLUMN height REAL DEFAULT 0;
+          `);
+        } catch (e) {
+          // Column already exists, ignore error
+        }
+
+        // Images table
+        await this.db.execAsync(`
+          CREATE TABLE IF NOT EXISTS images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            image_uri TEXT NOT NULL,
+            image_type TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+          );
+        `);
+
+        console.log("Database initialized successfully");
+      } catch (error) {
+        console.error("Error initializing database:", error);
+        this.db = null;
+        this.initPromise = null;
+        throw error;
+      }
+    })();
+
+    return this.initPromise;
   }
 
-  private async createTables() {
-    if (!this.db) throw new Error("Database not initialized");
-
-    // Users table
-    await this.db.execAsync(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        password TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // Measurements table
-    await this.db.execAsync(`
-      CREATE TABLE IF NOT EXISTS measurements (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        shoulders REAL NOT NULL,
-        bust REAL NOT NULL,
-        waist REAL NOT NULL,
-        hips REAL NOT NULL,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-      );
-    `);
-
-    // Images table
-    await this.db.execAsync(`
-      CREATE TABLE IF NOT EXISTS images (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        image_uri TEXT NOT NULL,
-        image_type TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-      );
-    `);
+  private async ensureInitialized() {
+    if (!this.db) {
+      if (!this.initPromise) {
+        await this.init();
+      } else {
+        await this.initPromise;
+      }
+    }
   }
 
   // User operations
@@ -89,6 +120,7 @@ class DatabaseService {
     name: string,
     password: string,
   ): Promise<User | null> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     try {
@@ -108,6 +140,7 @@ class DatabaseService {
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     try {
@@ -123,6 +156,7 @@ class DatabaseService {
   }
 
   async getUserById(id: number): Promise<User | null> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     try {
@@ -138,6 +172,7 @@ class DatabaseService {
   }
 
   async verifyUser(email: string, password: string): Promise<User | null> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     try {
@@ -156,12 +191,14 @@ class DatabaseService {
   async saveMeasurements(
     userId: number,
     measurements: {
+      height: number;
       shoulders: number;
       bust: number;
       waist: number;
       hips: number;
     },
   ): Promise<boolean> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     try {
@@ -171,8 +208,9 @@ class DatabaseService {
       if (existing) {
         // Update existing measurements
         await this.db.runAsync(
-          "UPDATE measurements SET shoulders = ?, bust = ?, waist = ?, hips = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+          "UPDATE measurements SET height = ?, shoulders = ?, bust = ?, waist = ?, hips = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
           [
+            measurements.height,
             measurements.shoulders,
             measurements.bust,
             measurements.waist,
@@ -183,9 +221,10 @@ class DatabaseService {
       } else {
         // Insert new measurements
         await this.db.runAsync(
-          "INSERT INTO measurements (user_id, shoulders, bust, waist, hips) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO measurements (user_id, height, shoulders, bust, waist, hips) VALUES (?, ?, ?, ?, ?, ?)",
           [
             userId,
+            measurements.height,
             measurements.shoulders,
             measurements.bust,
             measurements.waist,
@@ -201,6 +240,7 @@ class DatabaseService {
   }
 
   async getMeasurements(userId: number): Promise<UserMeasurements | null> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     try {
@@ -221,6 +261,7 @@ class DatabaseService {
     imageUri: string,
     imageType: "profile" | "fitting",
   ): Promise<boolean> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     try {
@@ -239,6 +280,7 @@ class DatabaseService {
     userId: number,
     imageType?: "profile" | "fitting",
   ): Promise<UserImage[]> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     try {
@@ -261,6 +303,7 @@ class DatabaseService {
   }
 
   async deleteImage(imageId: number): Promise<boolean> {
+    await this.ensureInitialized();
     if (!this.db) throw new Error("Database not initialized");
 
     try {

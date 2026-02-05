@@ -146,32 +146,30 @@ npx expo start
 # Navigate to backend directory
 cd backend
 
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# Windows:
-.\venv\Scripts\activate
-# macOS/Linux:
-source venv/bin/activate
-
-# Install dependencies
+# Install dependencies (pip must be installed)
 pip install -r requirements.txt
 
-# Copy environment file and add your API keys
-cp .env.example .env
-
-# Start the server
-python main.py
+# Start the development server
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The FastAPI server will run on `http://localhost:8000`
 
+**Interactive API Documentation:**
+
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
 **API Endpoints:**
 
+- `GET /api/products` - Get all products (with filtering)
+- `GET /api/products/{product_id}` - Get single product
+- `GET /api/products/category/{category}` - Get products by category
 - `POST /measure` - Extract body measurements from image
 - `POST /virtual-tryon` - Perform virtual try-on
 - `POST /analyze-pose` - Debug endpoint with pose visualization
+
+For detailed backend documentation, see [backend/README.md](backend/README.md)
 
 ### 3. Setup Node.js Scraper (Phase 3)
 

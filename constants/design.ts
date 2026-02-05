@@ -3,24 +3,24 @@
  */
 
 export const COLORS = {
-  // Primary brand colors
-  primary: "#6C63FF",
-  primaryDark: "#5A52D5",
-  primaryLight: "#8B85FF",
+  // Primary brand colors - From Figma (Black & Grey)
+  primary: "#000000",
+  primaryDark: "#111827",
+  primaryLight: "#374151",
 
-  // Secondary colors
-  secondary: "#FF6B9D",
-  secondaryDark: "#E55A8A",
-  secondaryLight: "#FF8BB3",
+  // Secondary colors - From Figma (Grey tones)
+  secondary: "#4B5563",
+  secondaryDark: "#374151",
+  secondaryLight: "#6B7280",
 
   // Accent colors
-  accent: "#00D9FF",
-  accentDark: "#00B8D9",
+  accent: "#000000",
+  accentDark: "#111827",
 
   // Gradient combinations
   gradients: {
-    primary: ["#6C63FF", "#5A52D5", "#4840B0"],
-    secondary: ["#FF6B9D", "#FF8E53"],
+    primary: ["#000000", "#111827", "#1F2937"],
+    secondary: ["#4B5563", "#6B7280"],
     sunset: ["#FF6B6B", "#FF8E53", "#FFB347"],
     ocean: ["#667eea", "#764ba2"],
     mint: ["#11998e", "#38ef7d"],
@@ -141,7 +141,7 @@ export const SHADOWS = {
     elevation: 8,
   },
   glow: {
-    shadowColor: "#6C63FF",
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.4,
     shadowRadius: 20,
